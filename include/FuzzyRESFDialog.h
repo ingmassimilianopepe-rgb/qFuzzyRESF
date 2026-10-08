@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDialog>
+#include <QString>
 
 class QCheckBox;
 class QComboBox;
