@@ -1,0 +1,22 @@
+# Build trees
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.user
+
+# Local plugin runs
+run_*/
+*.ifc
+*.xyz
