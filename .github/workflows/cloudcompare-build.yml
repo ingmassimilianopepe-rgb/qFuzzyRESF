@@ -26,6 +26,13 @@ jobs:
           submodules: recursive
           path: CloudCompare
 
+      - name: Record toolchain versions
+        run: |
+          echo "CloudCompare commit: $(git -C CloudCompare rev-parse HEAD)"
+          cmake --version
+          g++ --version
+          qmake6 --version || true
+
       - name: Install CloudCompare Qt6 build dependencies
         run: |
           sudo apt-get update -qq
@@ -50,7 +57,11 @@ jobs:
             echo "add_subdirectory( qFuzzyRESF )" >> CloudCompare/plugins/core/Standard/CMakeLists.txt
 
       - name: Configure CloudCompare with qFuzzyRESF
+        id: cc_configure
+        shell: bash
+        continue-on-error: true
         run: |
+          set -o pipefail
           cmake \
             -S CloudCompare \
             -B cc-build \
@@ -58,10 +69,62 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DEIGEN_ROOT_DIR=/usr/include/eigen3 \
             -DPLUGIN_STANDARD_QFUZZYRESF=ON \
-            -DBUILD_TESTING=OFF
+            -DBUILD_TESTING=OFF 2>&1 | tee configure.log
+          rc=${PIPESTATUS[0]}
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -ne 0 ]; then
+            msg=$(tail -n 25 configure.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
+            echo "::error title=CloudCompare CMake configure failure::$msg"
+          fi
+          exit 0
+
+      - name: Upload CMake configure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudcompare-configure-log
+          path: |
+            configure.log
+            cc-build/CMakeFiles/CMakeConfigureLog.yaml
+            cc-build/CMakeCache.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop after failed configure
+        if: steps.cc_configure.outputs.exit_code != '0'
+        run: |
+          echo "CloudCompare configuration failed. See annotation and cloudcompare-configure-log artifact."
+          exit 1
 
       - name: Build qFuzzyRESF plugin target
-        run: cmake --build cc-build --target QFUZZYRESF_PLUGIN --parallel 2
+        id: cc_build
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake --build cc-build --target QFUZZYRESF_PLUGIN --parallel 2 2>&1 | tee build.log
+          rc=${PIPESTATUS[0]}
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -ne 0 ]; then
+            msg=$(tail -n 35 build.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
+            echo "::error title=qFuzzyRESF compile failure::$msg"
+          fi
+          exit 0
+
+      - name: Upload compile log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qfuzzyresf-build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop after failed build
+        if: steps.cc_build.outputs.exit_code != '0'
+        run: |
+          echo "qFuzzyRESF build failed. See annotation and qfuzzyresf-build-log artifact."
+          exit 1
 
       - name: Show produced plugin binaries
         if: always()
