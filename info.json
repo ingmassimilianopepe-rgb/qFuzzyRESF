@@ -1,0 +1,20 @@
+{
+  "type": "Standard",
+  "core": false,
+  "name": "Fuzzy-RESF Scan-to-BIM",
+  "description": "Uncertainty-aware multi-orientation room-envelope reconstruction for clutter-resilient Scan-to-BIM.",
+  "authors": [
+    { "name": "Massimiliano Pepe" },
+    { "name": "Donato Palumbo" }
+  ],
+  "maintainers": [
+    { "name": "Massimiliano Pepe" },
+    { "name": "Donato Palumbo" }
+  ],
+  "references": [
+    {
+      "text": "Fuzzy-RESF manuscript and reproducibility documentation",
+      "url": "https://github.com/ingmassimilianopepe-rgb/qFuzzyRESF"
+    }
+  ]
+}
