@@ -8,8 +8,10 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QMessageBox>
+#include <QtGlobal>
 
 #include <ccHObject.h>
+#include <ccMainAppInterface.h>
 #include <ccPointCloud.h>
 
 #include <cassert>
@@ -25,15 +27,13 @@ void qFuzzyRESF::onNewSelection(const ccHObject::Container& selectedEntities)
     if (!m_action)
         return;
 
-    bool exactlyOneCloud = false;
     int cloudCount = 0;
     for (ccHObject* entity : selectedEntities)
     {
         if (entity && entity->isA(CC_TYPES::POINT_CLOUD))
             ++cloudCount;
     }
-    exactlyOneCloud = (cloudCount == 1);
-    m_action->setEnabled(exactlyOneCloud);
+    m_action->setEnabled(cloudCount == 1);
 }
 
 QList<QAction*> qFuzzyRESF::getActions()
