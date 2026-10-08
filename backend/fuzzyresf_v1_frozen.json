@@ -1,0 +1,20 @@
+{
+  "method": "Fuzzy-RESF",
+  "version": "1.0",
+  "description": "Frozen default parameter set for the qFuzzyRESF v0.1 reference backend.",
+  "plane_spacing_m": 0.01,
+  "plane_tolerance_m": 0.03,
+  "raster_cell_m": 0.02,
+  "angle_step_deg": 2.0,
+  "max_orientation_families": 12,
+  "confidence_threshold": 0.45,
+  "max_points": 1500000,
+  "multi_peak": true,
+  "topology": true,
+  "occlusion": true,
+  "fuzzy": true,
+  "instance_consolidation": true,
+  "geometric_feedback": true,
+  "export_ifc": true,
+  "export_diagnostics": true
+}
