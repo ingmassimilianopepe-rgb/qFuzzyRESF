@@ -1,0 +1,69 @@
+name: CloudCompare Qt6 build
+
+on:
+  push:
+    branches: ["feat/v0.1-scaffold", "main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ubuntu-cloudcompare:
+    name: CloudCompare 2.14+ / Qt6 / GCC
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout qFuzzyRESF
+        uses: actions/checkout@v5
+        with:
+          path: qFuzzyRESF
+
+      - name: Checkout CloudCompare
+        uses: actions/checkout@v5
+        with:
+          repository: CloudCompare/CloudCompare
+          ref: master
+          submodules: recursive
+          path: CloudCompare
+
+      - name: Install CloudCompare Qt6 build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qy \
+            cmake ninja-build g++ \
+            qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools qt6-5compat-dev \
+            libtbb-dev libeigen3-dev \
+            libavcodec-dev libavformat-dev \
+            libdraco-dev libcgal-dev libgdal-dev liblaszip-dev libxerces-c-dev zlib1g-dev \
+            libopencv-dev libboost-dev libboost-iostreams-dev libboost-system-dev \
+            libpcap-dev libflann-dev libglu1-mesa-dev \
+            udev libudev-dev libhidapi-dev libusb-1.0-0-dev
+
+      - name: Inject qFuzzyRESF into CloudCompare source tree
+        shell: bash
+        run: |
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            qFuzzyRESF/ CloudCompare/plugins/core/Standard/qFuzzyRESF/
+          grep -q "add_subdirectory( qFuzzyRESF )" CloudCompare/plugins/core/Standard/CMakeLists.txt || \
+            echo "add_subdirectory( qFuzzyRESF )" >> CloudCompare/plugins/core/Standard/CMakeLists.txt
+
+      - name: Configure CloudCompare with qFuzzyRESF
+        run: |
+          cmake \
+            -S CloudCompare \
+            -B cc-build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEIGEN_ROOT_DIR=/usr/include/eigen3 \
+            -DPLUGIN_STANDARD_QFUZZYRESF=ON \
+            -DBUILD_TESTING=OFF
+
+      - name: Build qFuzzyRESF plugin target
+        run: cmake --build cc-build --target QFUZZYRESF_PLUGIN --parallel 2
+
+      - name: Show produced plugin binaries
+        if: always()
+        run: |
+          find cc-build -type f \( -name '*QFUZZYRESF*' -o -name '*qFuzzyRESF*' -o -name 'libQFUZZYRESF_PLUGIN*' \) -print || true
