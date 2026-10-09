@@ -31,11 +31,12 @@ jobs:
           sudo apt-get install -qy \
             cmake ninja-build g++ xvfb \
             qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools qt6-5compat-dev \
+            libgl1-mesa-dev libgl-dev libglx-dev libopengl-dev libglu1-mesa-dev \
             libtbb-dev libeigen3-dev \
             libavcodec-dev libavformat-dev \
             libdraco-dev libcgal-dev libgdal-dev liblaszip-dev libxerces-c-dev zlib1g-dev \
             libopencv-dev libboost-dev libboost-iostreams-dev libboost-system-dev \
-            libpcap-dev libflann-dev libglu1-mesa-dev \
+            libpcap-dev libflann-dev \
             udev libudev-dev libhidapi-dev libusb-1.0-0-dev
           python3 -m pip install --upgrade pip
           python3 -m pip install numpy shapely requests laspy lazrs plyfile
