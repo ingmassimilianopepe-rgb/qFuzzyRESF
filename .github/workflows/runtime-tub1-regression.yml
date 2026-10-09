@@ -41,6 +41,16 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install numpy shapely requests laspy lazrs plyfile
 
+      - name: Add build swap and report memory
+        shell: bash
+        run: |
+          free -h
+          sudo fallocate -l 4G /swapfile || true
+          sudo chmod 600 /swapfile || true
+          sudo mkswap /swapfile || true
+          sudo swapon /swapfile || true
+          free -h
+
       - name: Inject qFuzzyRESF into CloudCompare
         run: |
           rsync -a --delete \
@@ -57,6 +67,8 @@ jobs:
             -B cc-build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS_RELEASE='-O0 -DNDEBUG' \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
             -DEIGEN_ROOT_DIR=/usr/include/eigen3 \
             -DPLUGIN_STANDARD_QFUZZYRESF=ON \
             -DBUILD_TESTING=OFF
