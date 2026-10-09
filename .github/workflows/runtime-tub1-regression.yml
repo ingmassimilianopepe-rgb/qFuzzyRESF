@@ -1,0 +1,154 @@
+name: Runtime and TUB1 regression
+
+on:
+  push:
+    branches: ["feat/runtime-tub1-regression"]
+  workflow_dispatch:
+
+jobs:
+  runtime-tub1:
+    name: CloudCompare runtime + TUB1 regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout qFuzzyRESF
+        uses: actions/checkout@v5
+        with:
+          path: qFuzzyRESF
+
+      - name: Checkout CloudCompare
+        uses: actions/checkout@v5
+        with:
+          repository: CloudCompare/CloudCompare
+          ref: master
+          submodules: recursive
+          path: CloudCompare
+
+      - name: Install build and runtime dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qy \
+            cmake ninja-build g++ xvfb \
+            qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools qt6-5compat-dev \
+            libtbb-dev libeigen3-dev \
+            libavcodec-dev libavformat-dev \
+            libdraco-dev libcgal-dev libgdal-dev liblaszip-dev libxerces-c-dev zlib1g-dev \
+            libopencv-dev libboost-dev libboost-iostreams-dev libboost-system-dev \
+            libpcap-dev libflann-dev libglu1-mesa-dev \
+            udev libudev-dev libhidapi-dev libusb-1.0-0-dev
+          python3 -m pip install --upgrade pip
+          python3 -m pip install numpy shapely requests laspy lazrs plyfile
+
+      - name: Inject qFuzzyRESF into CloudCompare
+        run: |
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            qFuzzyRESF/ CloudCompare/plugins/core/Standard/qFuzzyRESF/
+          grep -q "add_subdirectory( qFuzzyRESF )" CloudCompare/plugins/core/Standard/CMakeLists.txt || \
+            echo "add_subdirectory( qFuzzyRESF )" >> CloudCompare/plugins/core/Standard/CMakeLists.txt
+
+      - name: Configure CloudCompare
+        run: |
+          cmake \
+            -S CloudCompare \
+            -B cc-build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEIGEN_ROOT_DIR=/usr/include/eigen3 \
+            -DPLUGIN_STANDARD_QFUZZYRESF=ON \
+            -DBUILD_TESTING=OFF
+
+      - name: Build CloudCompare and qFuzzyRESF
+        run: |
+          cmake --build cc-build --target CloudCompare QFUZZYRESF_PLUGIN --parallel 2
+          test -x cc-build/qCC/CloudCompare
+          PLUGIN=$(find cc-build -type f -name 'libQFUZZYRESF_PLUGIN.so' | head -n 1)
+          test -n "$PLUGIN"
+          echo "PLUGIN=$PLUGIN" >> "$GITHUB_ENV"
+          echo "CC_BIN=$PWD/cc-build/qCC/CloudCompare" >> "$GITHUB_ENV"
+
+      - name: Generate synthetic runtime cloud
+        run: |
+          python3 - <<'PY'
+          import numpy as np
+          pts=[]
+          for z in np.linspace(0,3,31):
+              for t in np.linspace(0,5,101):
+                  pts += [[0,t,z],[5,t,z],[t,0,z],[t,5,z]]
+          np.savetxt('runtime_smoke.xyz', np.asarray(pts), fmt='%.6f %.6f %.6f')
+          PY
+
+      - name: Runtime smoke test through CloudCompare command interface
+        run: |
+          mkdir -p runtime-output
+          export CC_PLUGIN_PATH="$(dirname "$PLUGIN")"
+          export QFUZZYRESF_BACKEND_DIR="$PWD/qFuzzyRESF/backend"
+          export QFUZZYRESF_OUTPUT_ROOT="$PWD/runtime-output"
+          export QFUZZYRESF_PYTHON=python3
+          set -o pipefail
+          xvfb-run -a "$CC_BIN" -SILENT -O "$PWD/runtime_smoke.xyz" -FUZZY_RESF 2>&1 | tee runtime-smoke.log
+          grep -F "Plugin found: Fuzzy-RESF Scan-to-BIM" runtime-smoke.log
+          grep -F "[Fuzzy-RESF] completed" runtime-smoke.log
+          test -n "$(find runtime-output -name result.json -print -quit)"
+          test -n "$(find runtime-output -name walls.csv -print -quit)"
+          test -n "$(find runtime-output -name fuzzy_resf.ifc -print -quit)"
+
+      - name: Download public ISPRS TUB1 and prepare deterministic sample
+        run: |
+          python3 qFuzzyRESF/tests/download_isprs_tub1.py --workdir "$PWD/tub1-data" --max-points 1500000
+          test -s tub1-data/tub1_sample.xyz
+
+      - name: Run qFuzzyRESF end-to-end on TUB1 sample through CloudCompare
+        run: |
+          mkdir -p tub1-output
+          export CC_PLUGIN_PATH="$(dirname "$PLUGIN")"
+          export QFUZZYRESF_BACKEND_DIR="$PWD/qFuzzyRESF/backend"
+          export QFUZZYRESF_OUTPUT_ROOT="$PWD/tub1-output"
+          export QFUZZYRESF_PYTHON=python3
+          set -o pipefail
+          xvfb-run -a "$CC_BIN" -SILENT -O "$PWD/tub1-data/tub1_sample.xyz" -FUZZY_RESF 2>&1 | tee tub1-runtime.log
+          grep -F "[Fuzzy-RESF] completed" tub1-runtime.log
+          find tub1-output -maxdepth 2 -type f -print
+
+      - name: Compare plugin output with frozen TUB1 paper wall model
+        id: parity
+        shell: bash
+        run: |
+          GENERATED=$(find tub1-output -name walls.csv -print -quit)
+          test -n "$GENERATED"
+          set +e
+          python3 qFuzzyRESF/tests/check_tub1_parity.py \
+            --generated "$GENERATED" \
+            --expected qFuzzyRESF/tests/fixtures/tub1_frozen_walls.csv \
+            --report tub1-parity.json \
+            --threshold 0.95
+          rc=$?
+          set -e
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat tub1-parity.json
+
+      - name: Upload runtime and TUB1 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qfuzzyresf-runtime-tub1-regression
+          path: |
+            runtime-smoke.log
+            tub1-runtime.log
+            tub1-data/tub1_download.txt
+            tub1-parity.json
+            runtime-output/**/result.json
+            runtime-output/**/walls.csv
+            tub1-output/**/result.json
+            tub1-output/**/walls.csv
+            tub1-output/**/fuzzy_resf.ifc
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Enforce frozen-paper parity gate
+        if: steps.parity.outputs.exit_code != '0'
+        run: |
+          echo "TUB1 parity is below the frozen-paper threshold. The v0.1 backend must be aligned with the frozen research implementation before release."
+          exit 1
