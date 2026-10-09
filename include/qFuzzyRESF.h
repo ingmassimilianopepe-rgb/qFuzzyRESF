@@ -2,6 +2,8 @@
 
 #include "ccStdPluginInterface.h"
 
+class ccCommandLineInterface;
+
 class qFuzzyRESF : public QObject, public ccStdPluginInterface
 {
     Q_OBJECT
@@ -14,6 +16,7 @@ public:
 
     void onNewSelection(const ccHObject::Container& selectedEntities) override;
     QList<QAction*> getActions() override;
+    void registerCommands(ccCommandLineInterface* cmd) override;
 
 private:
     void doAction();
