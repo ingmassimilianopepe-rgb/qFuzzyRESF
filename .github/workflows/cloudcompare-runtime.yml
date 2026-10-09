@@ -1,0 +1,142 @@
+name: CloudCompare Qt6 runtime smoke
+
+on:
+  push:
+    branches: ["feat/v0.1-scaffold", "main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  runtime-smoke:
+    name: CloudCompare 2.14+ / Qt6 runtime plugin load
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout qFuzzyRESF
+        uses: actions/checkout@v5
+        with:
+          path: qFuzzyRESF
+
+      - name: Checkout CloudCompare
+        uses: actions/checkout@v5
+        with:
+          repository: CloudCompare/CloudCompare
+          ref: master
+          submodules: recursive
+          path: CloudCompare
+
+      - name: Install CloudCompare Qt6 runtime/build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qy \
+            cmake ninja-build g++ xvfb \
+            qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools qt6-5compat-dev \
+            libtbb-dev libeigen3-dev \
+            libavcodec-dev libavformat-dev \
+            libdraco-dev libcgal-dev libgdal-dev liblaszip-dev libxerces-c-dev zlib1g-dev \
+            libopencv-dev libboost-dev libboost-iostreams-dev libboost-system-dev \
+            libpcap-dev libflann-dev libglu1-mesa-dev \
+            udev libudev-dev libhidapi-dev libusb-1.0-0-dev
+
+      - name: Inject qFuzzyRESF into CloudCompare source tree
+        shell: bash
+        run: |
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            qFuzzyRESF/ CloudCompare/plugins/core/Standard/qFuzzyRESF/
+          grep -q "add_subdirectory( qFuzzyRESF )" CloudCompare/plugins/core/Standard/CMakeLists.txt || \
+            echo "add_subdirectory( qFuzzyRESF )" >> CloudCompare/plugins/core/Standard/CMakeLists.txt
+
+      - name: Configure CloudCompare with qFuzzyRESF
+        run: |
+          cmake \
+            -S CloudCompare \
+            -B cc-build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEIGEN_ROOT_DIR=/usr/include/eigen3 \
+            -DPLUGIN_STANDARD_QFUZZYRESF=ON \
+            -DBUILD_TESTING=OFF
+
+      - name: Build CloudCompare and qFuzzyRESF
+        run: |
+          cmake --build cc-build --target CloudCompare QFUZZYRESF_PLUGIN --parallel 2 2>&1 | tee runtime-build.log
+
+      - name: Locate runtime artifacts
+        id: locate
+        shell: bash
+        run: |
+          set -euo pipefail
+          CC_BIN=$(find "$GITHUB_WORKSPACE/cc-build" -type f -name CloudCompare -perm -111 | head -n 1)
+          PLUGIN_SO=$(find "$GITHUB_WORKSPACE/cc-build" -type f \( -name 'libQFUZZYRESF_PLUGIN*.so' -o -name '*QFUZZYRESF_PLUGIN*.so' \) | head -n 1)
+          test -n "$CC_BIN"
+          test -n "$PLUGIN_SO"
+          test -x "$CC_BIN"
+          test -f "$PLUGIN_SO"
+          echo "cc_bin=$CC_BIN" >> "$GITHUB_OUTPUT"
+          echo "plugin_so=$PLUGIN_SO" >> "$GITHUB_OUTPUT"
+          echo "plugin_dir=$(dirname "$PLUGIN_SO")" >> "$GITHUB_OUTPUT"
+          echo "CloudCompare executable: $CC_BIN"
+          echo "qFuzzyRESF library: $PLUGIN_SO"
+          ldd "$PLUGIN_SO" | tee plugin-ldd.log
+          if ldd "$PLUGIN_SO" | grep -q 'not found'; then
+            echo "::error::qFuzzyRESF has unresolved runtime shared-library dependencies"
+            exit 1
+          fi
+
+      - name: Create synthetic point-cloud smoke input
+        run: |
+          cat > smoke.xyz <<'EOF'
+          0.00 0.00 0.00
+          1.00 0.00 0.00
+          1.00 1.00 0.00
+          0.00 1.00 0.00
+          0.00 0.00 1.00
+          1.00 0.00 1.00
+          1.00 1.00 1.00
+          0.00 1.00 1.00
+          EOF
+
+      - name: Runtime smoke test - load plugin in CloudCompare
+        shell: bash
+        env:
+          CC_PLUGIN_PATH: ${{ steps.locate.outputs.plugin_dir }}
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          set -o pipefail
+          CC_BIN='${{ steps.locate.outputs.cc_bin }}'
+          xvfb-run -a -s '-screen 0 1280x1024x24' \
+            timeout 90s "$CC_BIN" -SILENT -AUTO_SAVE OFF -O "$GITHUB_WORKSPACE/smoke.xyz" \
+            2>&1 | tee cloudcompare-runtime.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "::error title=CloudCompare runtime failure::CloudCompare exited with code $rc"
+            exit "$rc"
+          fi
+
+          if ! grep -Fq 'Plugin found: Fuzzy-RESF Scan-to-BIM' cloudcompare-runtime.log; then
+            echo "::error title=qFuzzyRESF load failure::CloudCompare started but did not report loading qFuzzyRESF"
+            grep -Ei 'plugin|fuzzy|error|warning' cloudcompare-runtime.log || true
+            exit 1
+          fi
+
+          if grep -Ei 'QFUZZYRESF.*(not a valid plugin|not supported|invalid meta data)|libQFUZZYRESF_PLUGIN.*not found' cloudcompare-runtime.log; then
+            echo "::error title=qFuzzyRESF runtime diagnostics::CloudCompare reported a qFuzzyRESF loading error"
+            exit 1
+          fi
+
+          echo 'qFuzzyRESF runtime load smoke test PASSED.'
+
+      - name: Upload runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudcompare-qfuzzyresf-runtime
+          path: |
+            runtime-build.log
+            plugin-ldd.log
+            cloudcompare-runtime.log
+          if-no-files-found: ignore
+          retention-days: 14

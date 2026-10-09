@@ -1,0 +1,132 @@
+name: CloudCompare Qt6 build
+
+on:
+  push:
+    branches: ["feat/v0.1-scaffold", "main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ubuntu-cloudcompare:
+    name: CloudCompare 2.14+ / Qt6 / GCC
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout qFuzzyRESF
+        uses: actions/checkout@v5
+        with:
+          path: qFuzzyRESF
+
+      - name: Checkout CloudCompare
+        uses: actions/checkout@v5
+        with:
+          repository: CloudCompare/CloudCompare
+          ref: master
+          submodules: recursive
+          path: CloudCompare
+
+      - name: Record toolchain versions
+        run: |
+          echo "CloudCompare commit: $(git -C CloudCompare rev-parse HEAD)"
+          cmake --version
+          g++ --version
+          qmake6 --version || true
+
+      - name: Install CloudCompare Qt6 build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qy \
+            cmake ninja-build g++ \
+            qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools qt6-5compat-dev \
+            libtbb-dev libeigen3-dev \
+            libavcodec-dev libavformat-dev \
+            libdraco-dev libcgal-dev libgdal-dev liblaszip-dev libxerces-c-dev zlib1g-dev \
+            libopencv-dev libboost-dev libboost-iostreams-dev libboost-system-dev \
+            libpcap-dev libflann-dev libglu1-mesa-dev \
+            udev libudev-dev libhidapi-dev libusb-1.0-0-dev
+
+      - name: Inject qFuzzyRESF into CloudCompare source tree
+        shell: bash
+        run: |
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            qFuzzyRESF/ CloudCompare/plugins/core/Standard/qFuzzyRESF/
+          grep -q "add_subdirectory( qFuzzyRESF )" CloudCompare/plugins/core/Standard/CMakeLists.txt || \
+            echo "add_subdirectory( qFuzzyRESF )" >> CloudCompare/plugins/core/Standard/CMakeLists.txt
+
+      - name: Configure CloudCompare with qFuzzyRESF
+        id: cc_configure
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake \
+            -S CloudCompare \
+            -B cc-build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DEIGEN_ROOT_DIR=/usr/include/eigen3 \
+            -DPLUGIN_STANDARD_QFUZZYRESF=ON \
+            -DBUILD_TESTING=OFF 2>&1 | tee configure.log
+          rc=${PIPESTATUS[0]}
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -ne 0 ]; then
+            msg=$(tail -n 25 configure.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
+            echo "::error title=CloudCompare CMake configure failure::$msg"
+          fi
+          exit 0
+
+      - name: Upload CMake configure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudcompare-configure-log
+          path: |
+            configure.log
+            cc-build/CMakeFiles/CMakeConfigureLog.yaml
+            cc-build/CMakeCache.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop after failed configure
+        if: steps.cc_configure.outputs.exit_code != '0'
+        run: |
+          echo "CloudCompare configuration failed. See annotation and cloudcompare-configure-log artifact."
+          exit 1
+
+      - name: Build qFuzzyRESF plugin target
+        id: cc_build
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake --build cc-build --target QFUZZYRESF_PLUGIN --parallel 2 2>&1 | tee build.log
+          rc=${PIPESTATUS[0]}
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -ne 0 ]; then
+            msg=$(tail -n 35 build.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')
+            echo "::error title=qFuzzyRESF compile failure::$msg"
+          fi
+          exit 0
+
+      - name: Upload compile log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qfuzzyresf-build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop after failed build
+        if: steps.cc_build.outputs.exit_code != '0'
+        run: |
+          echo "qFuzzyRESF build failed. See annotation and qfuzzyresf-build-log artifact."
+          exit 1
+
+      - name: Show produced plugin binaries
+        if: always()
+        run: |
+          find cc-build -type f \( -name '*QFUZZYRESF*' -o -name '*qFuzzyRESF*' -o -name 'libQFUZZYRESF_PLUGIN*' \) -print || true
