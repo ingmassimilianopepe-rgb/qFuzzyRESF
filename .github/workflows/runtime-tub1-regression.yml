@@ -63,7 +63,11 @@ jobs:
 
       - name: Build CloudCompare and qFuzzyRESF
         run: |
-          cmake --build cc-build --target CloudCompare QFUZZYRESF_PLUGIN --parallel 2
+          echo "Memory before CloudCompare build:"
+          free -h
+          cmake --build cc-build --target CloudCompare QFUZZYRESF_PLUGIN --parallel 1
+          echo "Memory after CloudCompare build:"
+          free -h
           test -x cc-build/qCC/CloudCompare
           PLUGIN=$(find cc-build -type f -name 'libQFUZZYRESF_PLUGIN.so' | head -n 1)
           test -n "$PLUGIN"
