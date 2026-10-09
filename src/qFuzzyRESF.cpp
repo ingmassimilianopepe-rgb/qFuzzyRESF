@@ -10,11 +10,65 @@
 #include <QMessageBox>
 #include <QtGlobal>
 
+#include <ccCommandLineInterface.h>
 #include <ccHObject.h>
 #include <ccMainAppInterface.h>
 #include <ccPointCloud.h>
 
 #include <cassert>
+
+namespace
+{
+class FuzzyRESFCommand final : public ccCommandLineInterface::Command
+{
+public:
+    FuzzyRESFCommand()
+        : Command("Fuzzy-RESF Scan-to-BIM", "FUZZY_RESF")
+    {
+    }
+
+    bool process(ccCommandLineInterface& cmd) override
+    {
+        cmd.print("[Fuzzy-RESF] Starting command-line reconstruction");
+
+        if (cmd.clouds().size() != 1)
+        {
+            return cmd.error("Fuzzy-RESF currently expects exactly one loaded point cloud.");
+        }
+
+        ccPointCloud* cloud = cmd.clouds().front().pc;
+        if (!cloud)
+        {
+            return cmd.error("Fuzzy-RESF received an invalid point cloud.");
+        }
+
+        FuzzyRESFParameters parameters;
+        const QString pythonFromEnv = qEnvironmentVariable("QFUZZYRESF_PYTHON");
+        parameters.pythonExecutable = pythonFromEnv.isEmpty() ? QStringLiteral("python3") : pythonFromEnv;
+
+        QString backendDir = qEnvironmentVariable("QFUZZYRESF_BACKEND_DIR");
+        if (backendDir.isEmpty())
+        {
+            backendDir = QDir(QCoreApplication::applicationDirPath()).filePath("qFuzzyRESF/backend");
+        }
+
+        QString outputRoot = qEnvironmentVariable("QFUZZYRESF_OUTPUT_ROOT");
+        if (outputRoot.isEmpty())
+        {
+            outputRoot = QDir::temp().filePath("qFuzzyRESF-cli");
+        }
+
+        const auto result = FuzzyRESFRunner::run(cloud, parameters, backendDir, outputRoot);
+        if (!result.success)
+        {
+            return cmd.error(QString("Fuzzy-RESF backend failed: %1").arg(result.errorMessage));
+        }
+
+        cmd.print(QString("[Fuzzy-RESF] completed; output=%1").arg(result.outputDirectory));
+        return true;
+    }
+};
+} // namespace
 
 qFuzzyRESF::qFuzzyRESF(QObject* parent)
     : QObject(parent)
@@ -46,6 +100,14 @@ QList<QAction*> qFuzzyRESF::getActions()
         connect(m_action, &QAction::triggered, this, &qFuzzyRESF::doAction);
     }
     return {m_action};
+}
+
+void qFuzzyRESF::registerCommands(ccCommandLineInterface* cmd)
+{
+    if (cmd)
+    {
+        cmd->registerCommand(ccCommandLineInterface::Command::Shared(new FuzzyRESFCommand));
+    }
 }
 
 void qFuzzyRESF::doAction()
