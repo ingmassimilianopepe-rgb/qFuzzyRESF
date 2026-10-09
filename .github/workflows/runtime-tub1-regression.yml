@@ -77,10 +77,12 @@ jobs:
             2>&1 | tee cmake-configure.log
 
       - name: Build CloudCompare and qFuzzyRESF
+        shell: bash
         run: |
           echo "Memory before CloudCompare build:"
           free -h
-          cmake --build cc-build --target CloudCompare QFUZZYRESF_PLUGIN --parallel 1
+          set -o pipefail
+          cmake --build cc-build --target CloudCompare QFUZZYRESF_PLUGIN --parallel 1 2>&1 | tee cmake-build.log
           echo "Memory after CloudCompare build:"
           free -h
           test -x cc-build/qCC/CloudCompare
@@ -156,6 +158,7 @@ jobs:
           name: qfuzzyresf-runtime-tub1-regression
           path: |
             cmake-configure.log
+            cmake-build.log
             cc-build/CMakeFiles/CMakeConfigureLog.yaml
             runtime-smoke.log
             tub1-runtime.log
