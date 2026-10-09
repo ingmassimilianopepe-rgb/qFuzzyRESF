@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/CC/plugin/qFuzzyRESF">
+        <file>info.json</file>
+    </qresource>
+</RCC>
