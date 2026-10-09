@@ -7,6 +7,7 @@
 #include <QAction>
 #include <QCoreApplication>
 #include <QDir>
+#include <QMainWindow>
 #include <QMessageBox>
 #include <QtGlobal>
 
