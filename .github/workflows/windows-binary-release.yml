@@ -146,10 +146,11 @@ jobs:
         shell: pwsh
         run: |
           $appDir = Join-Path $env:GITHUB_WORKSPACE 'stage\CloudCompare'
-          Test-Path (Join-Path $appDir 'CloudCompare.exe') | Should -BeTrue
+          if (!(Test-Path (Join-Path $appDir 'CloudCompare.exe'))) { throw 'CloudCompare.exe missing' }
           $plugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QFUZZYRESF_PLUGIN.dll' | Select-Object -First 1
           if (-not $plugin) { throw 'Plugin DLL missing' }
           if (!(Test-Path (Join-Path $appDir 'qFuzzyRESF\backend\requirements.txt'))) { throw 'Backend requirements missing' }
+          Write-Host "Packaged plugin: $($plugin.FullName)"
 
       - name: Create ZIP and SHA256
         shell: pwsh
