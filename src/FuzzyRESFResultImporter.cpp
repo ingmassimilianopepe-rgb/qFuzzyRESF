@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QStringList>
 #include <QTextStream>
+#include <QtGlobal>
 
 #include <ccHObject.h>
 #include <ccMainAppInterface.h>
@@ -44,11 +45,7 @@ ccPolyline* makeRectangle(const QString& name,
                           ccPointCloud* sourceCloud)
 {
     auto* vertices = new ccPointCloud(name + "_vertices");
-    if (!vertices->reserve(4))
-    {
-        delete vertices;
-        return nullptr;
-    }
+    vertices->reserve(4);
     vertices->addPoint(a);
     vertices->addPoint(b);
     vertices->addPoint(c);
@@ -57,11 +54,7 @@ ccPolyline* makeRectangle(const QString& name,
 
     auto* poly = new ccPolyline(vertices);
     poly->addChild(vertices);
-    if (!poly->addPointIndex(0, 4))
-    {
-        delete poly;
-        return nullptr;
-    }
+    poly->addPointIndex(0, 4);
     poly->setClosed(true);
     poly->setName(name);
     poly->setColor(ccColor::Rgb(static_cast<unsigned char>(color.red()),
@@ -130,8 +123,6 @@ bool FuzzyRESFResultImporter::importResults(const QString& outputDirectory,
     const int iconf = column("confidence");
     const int iid = column("id");
 
-    // state is intentionally optional for backward compatibility. Geometry columns are
-    // the stable visualization contract shared by v1, v2 and semantic-topological v3.
     if (ix1 < 0 || iy1 < 0 || iz0 < 0 || ix2 < 0 || iy2 < 0 || iz1 < 0)
     {
         errorMessage = "walls.csv is missing required wall geometry columns (x1,y1,z0,x2,y2,z1).";
@@ -165,7 +156,6 @@ bool FuzzyRESFResultImporter::importResults(const QString& outputDirectory,
             CCVector3(x1, y1, z0), CCVector3(x2, y2, z0),
             CCVector3(x2, y2, z1), CCVector3(x1, y1, z1),
             colorForState(state), sourceCloud);
-        if (!poly) continue;
 
         ccHObject* parent = uncertain;
         const QString s = state.toLower();
@@ -176,9 +166,6 @@ bool FuzzyRESFResultImporter::importResults(const QString& outputDirectory,
     }
     wallsFile.close();
 
-    // Openings are displayed as host-wall-local rectangular outlines. This is a diagnostic
-    // CloudCompare preview; the semantic BIM objects and void/fill relationships are stored
-    // in the IFC itself.
     const QString openingsPath = QDir(outputDirectory).filePath("openings.csv");
     QFile openingsFile(openingsPath);
     if (openingsFile.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -240,8 +227,7 @@ bool FuzzyRESFResultImporter::importResults(const QString& outputDirectory,
                         QString("%1_%2 [wall=%3, conf=%4]").arg(kind, id, wallId).arg(confidence, 0, 'f', 2),
                         CCVector3(xa, ya, za), CCVector3(xb, yb, za),
                         CCVector3(xb, yb, zb), CCVector3(xa, ya, zb), color, sourceCloud);
-                    if (poly)
-                        (isDoor ? doors : windows)->addChild(poly);
+                    (isDoor ? doors : windows)->addChild(poly);
                 }
             }
         }
