@@ -1,1 +1,2 @@
 numpy>=1.24
+shapely>=2.0
