@@ -53,7 +53,9 @@ jobs:
           $dst = Join-Path $env:GITHUB_WORKSPACE 'CloudCompare\plugins\core\Standard\qFuzzyRESF'
           New-Item -ItemType Directory -Force -Path $dst | Out-Null
           robocopy (Join-Path $env:GITHUB_WORKSPACE 'qFuzzyRESF') $dst /E /XD .git .github | Out-Host
-          if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE }
+          $rc = $LASTEXITCODE
+          if ($rc -ge 8) { exit $rc }
+          $global:LASTEXITCODE = 0
           $cmakeList = Join-Path $env:GITHUB_WORKSPACE 'CloudCompare\plugins\core\Standard\CMakeLists.txt'
           $text = Get-Content $cmakeList -Raw
           if ($text -notmatch 'add_subdirectory\(\s*qFuzzyRESF\s*\)') {
