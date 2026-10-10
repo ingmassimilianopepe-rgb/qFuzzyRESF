@@ -134,7 +134,7 @@ def write_bim_ifc(model, path: str | Path, project_name: str = "Fuzzy-RESF-BIM")
             add(f"IFCPROPERTYSINGLEVALUE('RESF_NormalConsistency',$,IFCREAL({float(getattr(w, 'resf_N', 0.0)):.6f}),$)"),
             add(f"IFCPROPERTYSINGLEVALUE('RESF_OcclusionEvidence',$,IFCREAL({float(getattr(w, 'resf_O', 0.0)):.6f}),$)"),
             add(f"IFCPROPERTYSINGLEVALUE('GeometricFeedback',$,IFCREAL({float(getattr(w, 'geometric_feedback', 1.0)):.6f}),$)"),
-            add("IFCPROPERTYSINGLEVALUE('AlgorithmVersion',$,IFCLABEL('Fuzzy-RESF-BIM 3.0 semantic-topological'),$)"),
+            add("IFCPROPERTYSINGLEVALUE('AlgorithmVersion',$,IFCLABEL('Fuzzy-RESF-BIM 3.1 topology-completion'),$)"),
         ]
         pset = add(f"IFCPROPERTYSET({_q(_guid())},#{owner},'Pset_FuzzyRESF_BIM',$,({','.join('#'+str(p) for p in props)}))")
         add(f"IFCRELDEFINESBYPROPERTIES({_q(_guid())},#{owner},$,$,(#{wall}),#{pset})")
