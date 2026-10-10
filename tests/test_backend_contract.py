@@ -55,8 +55,8 @@ def test_cli_contract(tmp_path: Path):
 
     request = {
         "method": "Fuzzy-RESF-BIM",
-        "version": "3.0-semantic-topological",
-        "preset": "Fuzzy-RESF-BIM 3.0 (Semantic)",
+        "version": "3.1-topology-completion",
+        "preset": "Fuzzy-RESF-BIM 3.1 (Topology completion)",
         "input": str(cloud),
         "output": str(out),
         "plane_spacing_m": 0.01,
@@ -102,7 +102,7 @@ def test_cli_contract(tmp_path: Path):
 
     result = json.loads((out / "result.json").read_text(encoding="utf-8"))
     assert result["status"] == "success"
-    assert result["version"] == "3.0-semantic-topological"
+    assert result["version"] == "3.1-topology-completion"
     # A simple rectangular room should resolve to physical wall instances, not dozens
     # of nearly coincident sheet-like plane hypotheses.
     assert 4 <= result["walls"] <= 6
