@@ -22,6 +22,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt pytest
       - name: Compile Python backend
-        run: python -m py_compile backend/fuzzy_resf_core.py backend/fuzzy_resf_cli.py backend/ifc_export.py
+        run: python -m py_compile backend/bim_reconstruction.py backend/fuzzy_resf_cli.py backend/ifc_bim_export.py
       - name: Run BIM contract test
         run: python -m pytest tests/test_backend_contract.py -q
