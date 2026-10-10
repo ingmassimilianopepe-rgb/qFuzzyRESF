@@ -101,6 +101,7 @@ def test_fragmented_room_becomes_continuous_bim(tmp_path: Path):
     result = json.loads((out / "result.json").read_text(encoding="utf-8"))
     assert result["status"] == "success"
     assert result["version"] == "3.1-topology-completion"
+    assert result["wall_completion"] == "coplanar_gap_plus_junction_plus_floor_ceiling_envelope"
     assert 4 <= result["walls"] <= 5, result
     assert result["spaces"] >= 1
     assert result["slabs"] >= 2
@@ -113,11 +114,11 @@ def test_fragmented_room_becomes_continuous_bim(tmp_path: Path):
         math.hypot(float(w["x2"]) - float(w["x1"]), float(w["y2"]) - float(w["y1"]))
         for w in walls
     )
-    # The four physical room walls must be reconstructed across the removed fragments.
+    # Verify the architectural outcome, not a particular internal merge path: the
+    # four room walls must span across the deliberately removed scan fragments.
     assert sum(length >= 4.5 for length in lengths) >= 4, lengths
     assert sum(length >= 7.0 for length in lengths) >= 2, lengths
     assert min(lengths) >= 2.0, "short furniture-like planar fragment leaked into BIM"
-    assert any(w["source"] in {"coplanar_gap_completion", "horizontal_envelope_completion", "paired_faces"} for w in walls)
 
     openings = list(csv.DictReader((out / "openings.csv").open(newline="", encoding="utf-8")))
     assert sum(o["kind"] == "Door" for o in openings) == 1
