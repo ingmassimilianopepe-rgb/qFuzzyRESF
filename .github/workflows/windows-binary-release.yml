@@ -2,7 +2,7 @@ name: Windows binary release
 
 on:
   push:
-    branches: ["release/windows-v0.1"]
+    branches: ["release/windows-v0.1", "feat/bim-semantic-v1-1"]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-windows-binary:
-    name: qFuzzyRESF Windows x64 portable bundle
+    name: qFuzzyRESF Windows x64 semantic BIM bundle
     runs-on: windows-latest
     timeout-minutes: 120
 
@@ -37,6 +37,13 @@ jobs:
           environment-file: CloudCompare/.ci/conda-win.yml
           channels: conda-forge
           conda-remove-defaults: "true"
+
+      - name: Test semantic BIM backend
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          python -m pip install -r qFuzzyRESF/backend/requirements.txt
+          python qFuzzyRESF/tests/smoke_semantic_bim.py
 
       - name: Configure MSVC console
         uses: ilammy/msvc-dev-cmd@v1
@@ -121,22 +128,11 @@ jobs:
           }
 
           $plugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QFUZZYRESF_PLUGIN.dll' | Select-Object -First 1
-          if (-not $plugin) {
-            Write-Error 'QFUZZYRESF_PLUGIN.dll not found in portable installation'
-            exit 1
-          }
-
+          if (-not $plugin) { throw 'QFUZZYRESF_PLUGIN.dll not found' }
           $lasPlugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QLAS_IO_PLUGIN.dll' | Select-Object -First 1
-          if (-not $lasPlugin) {
-            Write-Error 'QLAS_IO_PLUGIN.dll not found: LAS/LAZ import would be unavailable'
-            exit 1
-          }
-
+          if (-not $lasPlugin) { throw 'QLAS_IO_PLUGIN.dll not found: LAS/LAZ unavailable' }
           $e57Plugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QE57_IO_PLUGIN.dll' | Select-Object -First 1
-          if (-not $e57Plugin) {
-            Write-Error 'QE57_IO_PLUGIN.dll not found: E57 import would be unavailable'
-            exit 1
-          }
+          if (-not $e57Plugin) { throw 'QE57_IO_PLUGIN.dll not found: E57 unavailable' }
 
           $backendDst = Join-Path $appDir 'qFuzzyRESF\backend'
           New-Item -ItemType Directory -Force -Path $backendDst | Out-Null
@@ -155,30 +151,32 @@ jobs:
               & python -m pip install -r (Join-Path $backend 'requirements.txt')
           }
           Write-Host 'Dipendenze Python qFuzzyRESF installate.'
-          Write-Host 'Avviare CloudCompare\CloudCompare.exe, caricare una nuvola LAS/LAZ/E57, selezionarla e usare Plugins -> Fuzzy-RESF Scan-to-BIM.'
+          Write-Host 'Avviare CloudCompare\CloudCompare.exe, caricare LAS/LAZ/E57, selezionare la nuvola e usare Plugins -> Fuzzy-RESF Scan-to-BIM.'
           '@
           Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE 'stage\SETUP_QFUZZYRESF.ps1') -Value $setup -Encoding UTF8
 
           $readme = @'
-          qFuzzyRESF v0.1 - Windows x64 portable bundle
+          qFuzzyRESF v0.2 semantic BIM - Windows x64 portable
 
-          Contenuto:
-          - CloudCompare Windows x64 compilato dal commit 92adb19a651f5711f7896d0e4351344703ff88c4
-          - qFuzzyRESF compilato dal branch release/windows-v0.1
-          - qLASIO abilitato per import/export LAS e LAZ tramite LASzip
-          - qE57IO abilitato per import/export E57 tramite libE57Format
-          - backend Python qFuzzyRESF incluso in CloudCompare\qFuzzyRESF\backend
-          - runtime DLL native del build Conda incluse nel bundle portable
+          Questa build include:
+          - import LAS/LAZ tramite qLASIO
+          - import E57 tramite qE57IO
+          - Fuzzy-RESF v1.1 semantic BIM
+          - consolidamento delle facce muro e snapping topologico
+          - rilevamento di porte e finestre dai vuoti rasterizzati delle pareti
+          - IfcWallStandardCase, IfcOpeningElement, IfcDoor, IfcWindow e IfcSlab
+          - anteprima CloudCompare con muri 3D e oggetti porta/finestra
+          - finestra Salva con nome per l'IFC e controllo anti-file-vuoto
 
           Prima esecuzione:
           1. Installare Python 3.10 o successivo se non presente.
-          2. Fare clic destro su SETUP_QFUZZYRESF.ps1 e scegliere "Esegui con PowerShell", oppure eseguire:
-             powershell -ExecutionPolicy Bypass -File .\SETUP_QFUZZYRESF.ps1
+          2. Eseguire: powershell -ExecutionPolicy Bypass -File .\SETUP_QFUZZYRESF.ps1
           3. Avviare CloudCompare\CloudCompare.exe.
           4. Aprire una point cloud LAS/LAZ/E57 e selezionare esattamente una nuvola nel DB Tree.
           5. Aprire Plugins -> Fuzzy-RESF Scan-to-BIM.
 
-          Nota: il backend numerico v0.1 e il relativo gate TUB1 restano separati dalla compilazione binaria Windows.
+          Output temporanei: walls.csv, openings.csv, slabs.csv, result.json, fuzzy_resf.ifc.
+          L'IFC definitivo viene scelto dall'utente tramite Salva con nome.
           '@
           Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE 'stage\README_QFUZZYRESF.txt') -Value $readme -Encoding UTF8
 
@@ -191,37 +189,36 @@ jobs:
         run: |
           $appDir = Join-Path $env:GITHUB_WORKSPACE 'stage\CloudCompare'
           if (!(Test-Path (Join-Path $appDir 'CloudCompare.exe'))) { throw 'CloudCompare.exe missing' }
-          $plugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QFUZZYRESF_PLUGIN.dll' | Select-Object -First 1
-          if (-not $plugin) { throw 'qFuzzyRESF plugin DLL missing' }
-          $lasPlugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QLAS_IO_PLUGIN.dll' | Select-Object -First 1
-          if (-not $lasPlugin) { throw 'qLASIO plugin DLL missing: LAS/LAZ support unavailable' }
-          $e57Plugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QE57_IO_PLUGIN.dll' | Select-Object -First 1
-          if (-not $e57Plugin) { throw 'qE57IO plugin DLL missing: E57 support unavailable' }
-          if (!(Test-Path (Join-Path $appDir 'qFuzzyRESF\backend\requirements.txt'))) { throw 'Backend requirements missing' }
+          foreach ($pluginName in @('QFUZZYRESF_PLUGIN.dll','QLAS_IO_PLUGIN.dll','QE57_IO_PLUGIN.dll')) {
+            if (-not (Get-ChildItem -Path $appDir -Recurse -Filter $pluginName | Select-Object -First 1)) {
+              throw "Plugin missing: $pluginName"
+            }
+          }
+          foreach ($backendFile in @('requirements.txt','fuzzy_resf_cli.py','fuzzy_resf_core.py','ifc_export.py')) {
+            if (!(Test-Path (Join-Path $appDir "qFuzzyRESF\backend\$backendFile"))) { throw "Backend file missing: $backendFile" }
+          }
           foreach ($dll in @('zstd.dll', 'double-conversion.dll', 'pcre2-16.dll')) {
             if (!(Test-Path (Join-Path $appDir $dll))) { throw "Runtime DLL missing: $dll" }
           }
-          Write-Host "Packaged qFuzzyRESF plugin: $($plugin.FullName)"
-          Write-Host "Packaged qLASIO plugin: $($lasPlugin.FullName)"
-          Write-Host "Packaged qE57IO plugin: $($e57Plugin.FullName)"
 
       - name: Create ZIP and SHA256
         shell: pwsh
         run: |
-          $zip = Join-Path $env:GITHUB_WORKSPACE 'qFuzzyRESF-v0.1-Windows-x64-portable.zip'
+          $zipName = 'qFuzzyRESF-v0.2-Windows-x64-LAS-E57-SemanticBIM.zip'
+          $zip = Join-Path $env:GITHUB_WORKSPACE $zipName
           if (Test-Path $zip) { Remove-Item $zip -Force }
           Compress-Archive -Path (Join-Path $env:GITHUB_WORKSPACE 'stage\*') -DestinationPath $zip -CompressionLevel Optimal
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  qFuzzyRESF-v0.1-Windows-x64-portable.zip" | Set-Content (Join-Path $env:GITHUB_WORKSPACE 'qFuzzyRESF-v0.1-Windows-x64-portable.zip.sha256') -Encoding ASCII
+          "$hash  $zipName" | Set-Content (Join-Path $env:GITHUB_WORKSPACE "$zipName.sha256") -Encoding ASCII
           Get-Item $zip | Format-List FullName,Length
-          Get-Content (Join-Path $env:GITHUB_WORKSPACE 'qFuzzyRESF-v0.1-Windows-x64-portable.zip.sha256')
+          Get-Content (Join-Path $env:GITHUB_WORKSPACE "$zipName.sha256")
 
       - name: Upload Windows binary bundle
         uses: actions/upload-artifact@v4
         with:
-          name: qFuzzyRESF-v0.1-Windows-x64-portable
+          name: qFuzzyRESF-v0.2-Windows-x64-LAS-E57-SemanticBIM
           path: |
-            qFuzzyRESF-v0.1-Windows-x64-portable.zip
-            qFuzzyRESF-v0.1-Windows-x64-portable.zip.sha256
+            qFuzzyRESF-v0.2-Windows-x64-LAS-E57-SemanticBIM.zip
+            qFuzzyRESF-v0.2-Windows-x64-LAS-E57-SemanticBIM.zip.sha256
           if-no-files-found: error
           retention-days: 90
