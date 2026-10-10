@@ -62,7 +62,7 @@ jobs:
             Add-Content $cmakeList "`nadd_subdirectory( qFuzzyRESF )`n"
           }
 
-      - name: Configure CloudCompare + qFuzzyRESF
+      - name: Configure CloudCompare + qFuzzyRESF + LAS/LAZ
         shell: bash -l {0}
         run: |
           set -euo pipefail
@@ -77,6 +77,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="$CONDA_LIB_DIR" \
             -DEIGEN_ROOT_DIR="$EIGEN_ROOT_DIR" \
             -DOPTION_BUILD_CCVIEWER=OFF \
+            -DPLUGIN_IO_QLAS=ON \
             -DPLUGIN_STANDARD_QFUZZYRESF=ON \
             -DBUILD_TESTING=OFF
 
@@ -124,6 +125,12 @@ jobs:
             exit 1
           }
 
+          $lasPlugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QLAS_IO_PLUGIN.dll' | Select-Object -First 1
+          if (-not $lasPlugin) {
+            Write-Error 'QLAS_IO_PLUGIN.dll not found: LAS/LAZ import would be unavailable'
+            exit 1
+          }
+
           $backendDst = Join-Path $appDir 'qFuzzyRESF\backend'
           New-Item -ItemType Directory -Force -Path $backendDst | Out-Null
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'qFuzzyRESF\backend\*') $backendDst -Recurse -Force
@@ -141,7 +148,7 @@ jobs:
               & python -m pip install -r (Join-Path $backend 'requirements.txt')
           }
           Write-Host 'Dipendenze Python qFuzzyRESF installate.'
-          Write-Host 'Avviare CloudCompare\CloudCompare.exe, caricare una nuvola, selezionarla e usare Plugins -> Fuzzy-RESF Scan-to-BIM.'
+          Write-Host 'Avviare CloudCompare\CloudCompare.exe, caricare una nuvola LAS/LAZ, selezionarla e usare Plugins -> Fuzzy-RESF Scan-to-BIM.'
           '@
           Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE 'stage\SETUP_QFUZZYRESF.ps1') -Value $setup -Encoding UTF8
 
@@ -151,6 +158,7 @@ jobs:
           Contenuto:
           - CloudCompare Windows x64 compilato dal commit 92adb19a651f5711f7896d0e4351344703ff88c4
           - qFuzzyRESF compilato dal branch release/windows-v0.1
+          - qLASIO abilitato per import/export LAS e LAZ tramite LASzip
           - backend Python qFuzzyRESF incluso in CloudCompare\qFuzzyRESF\backend
           - runtime DLL native del build Conda incluse nel bundle portable
 
@@ -159,14 +167,15 @@ jobs:
           2. Fare clic destro su SETUP_QFUZZYRESF.ps1 e scegliere "Esegui con PowerShell", oppure eseguire:
              powershell -ExecutionPolicy Bypass -File .\SETUP_QFUZZYRESF.ps1
           3. Avviare CloudCompare\CloudCompare.exe.
-          4. Aprire una point cloud e selezionare esattamente una nuvola nel DB Tree.
+          4. Aprire una point cloud LAS/LAZ e selezionare esattamente una nuvola nel DB Tree.
           5. Aprire Plugins -> Fuzzy-RESF Scan-to-BIM.
 
           Nota: il backend numerico v0.1 e il relativo gate TUB1 restano separati dalla compilazione binaria Windows.
           '@
           Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE 'stage\README_QFUZZYRESF.txt') -Value $readme -Encoding UTF8
 
-          Write-Host "Plugin binary: $($plugin.FullName)"
+          Write-Host "qFuzzyRESF plugin: $($plugin.FullName)"
+          Write-Host "qLASIO plugin: $($lasPlugin.FullName)"
 
       - name: Smoke-check packaged files
         shell: pwsh
@@ -174,12 +183,15 @@ jobs:
           $appDir = Join-Path $env:GITHUB_WORKSPACE 'stage\CloudCompare'
           if (!(Test-Path (Join-Path $appDir 'CloudCompare.exe'))) { throw 'CloudCompare.exe missing' }
           $plugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QFUZZYRESF_PLUGIN.dll' | Select-Object -First 1
-          if (-not $plugin) { throw 'Plugin DLL missing' }
+          if (-not $plugin) { throw 'qFuzzyRESF plugin DLL missing' }
+          $lasPlugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QLAS_IO_PLUGIN.dll' | Select-Object -First 1
+          if (-not $lasPlugin) { throw 'qLASIO plugin DLL missing: LAS/LAZ support unavailable' }
           if (!(Test-Path (Join-Path $appDir 'qFuzzyRESF\backend\requirements.txt'))) { throw 'Backend requirements missing' }
           foreach ($dll in @('zstd.dll', 'double-conversion.dll', 'pcre2-16.dll')) {
             if (!(Test-Path (Join-Path $appDir $dll))) { throw "Runtime DLL missing: $dll" }
           }
-          Write-Host "Packaged plugin: $($plugin.FullName)"
+          Write-Host "Packaged qFuzzyRESF plugin: $($plugin.FullName)"
+          Write-Host "Packaged qLASIO plugin: $($lasPlugin.FullName)"
 
       - name: Create ZIP and SHA256
         shell: pwsh
