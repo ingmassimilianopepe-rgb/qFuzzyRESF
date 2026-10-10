@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 import sys
 
-from bim_reconstruction import reconstruct_bim, write_csv, write_model_json
+from bim_reconstruction import write_csv, write_model_json
+from topology_completion import reconstruct_bim
 from ifc_bim_export import write_bim_ifc
 
 
@@ -39,8 +40,6 @@ def main() -> int:
         model_path = output_dir / "bim_model.json"
         ifc_path = output_dir / "fuzzy_resf.ifc"
 
-        # Keep the wall CSV backward-compatible with the CloudCompare importer: x1/y1/x2/y2,
-        # z0/z1, id, confidence and state are all present in the v3 Wall dataclass.
         write_csv(
             model.walls,
             walls_path,
@@ -93,7 +92,7 @@ def main() -> int:
         summary = dict(model.summary)
         summary.update(
             {
-                "preset": request.get("preset", "Fuzzy-RESF-BIM 3.0"),
+                "preset": request.get("preset", "Fuzzy-RESF-BIM 3.1"),
                 "walls_csv": str(walls_path),
                 "openings_csv": str(openings_path),
                 "spaces_csv": str(spaces_path),
@@ -111,7 +110,7 @@ def main() -> int:
         error = {
             "status": "error",
             "method": "Fuzzy-RESF-BIM",
-            "version": "3.0-semantic-topological",
+            "version": "3.1-topology-completion",
             "error": f"{type(exc).__name__}: {exc}",
         }
         _write_summary(error, result_path)
