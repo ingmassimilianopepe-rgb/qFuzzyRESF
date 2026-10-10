@@ -11,31 +11,34 @@ def make_room_cloud(path: Path) -> None:
     pts = []
 
     # Four walls of a 6 x 4 m room, 2.8 m high.
-    # South wall contains a 0.9 x 2.1 m door opening centered at x=3.0.
-    for _ in range(9000):
+    # South wall: 0.9 x 2.1 m door at floor level.
+    for _ in range(12000):
         x = rng.uniform(0.0, 6.0)
         z = rng.uniform(0.0, 2.8)
         if not (2.55 <= x <= 3.45 and 0.0 <= z <= 2.1):
-            pts.append((x, 0.0 + rng.normal(0, 0.005), z))
+            pts.append((x, rng.normal(0, 0.004), z))
 
-    # North wall contains a 1.4 x 1.1 m window, sill 0.9 m.
-    for _ in range(9000):
+    # North wall: 1.4 x 1.1 m window with 0.9 m sill.
+    for _ in range(12000):
         x = rng.uniform(0.0, 6.0)
         z = rng.uniform(0.0, 2.8)
         if not (1.8 <= x <= 3.2 and 0.9 <= z <= 2.0):
-            pts.append((x, 4.0 + rng.normal(0, 0.005), z))
+            pts.append((x, 4.0 + rng.normal(0, 0.004), z))
 
-    for _ in range(6000):
+    for _ in range(8000):
         y = rng.uniform(0.0, 4.0)
         z = rng.uniform(0.0, 2.8)
-        pts.append((0.0 + rng.normal(0, 0.005), y, z))
-        pts.append((6.0 + rng.normal(0, 0.005), y, z))
+        pts.append((rng.normal(0, 0.004), y, z))
+        pts.append((6.0 + rng.normal(0, 0.004), y, z))
 
-    # floor and mild interior planar clutter
-    for _ in range(4000):
+    # Strong horizontal floor and ceiling levels make storey detection explicit.
+    for _ in range(5000):
         pts.append((rng.uniform(0, 6), rng.uniform(0, 4), rng.normal(0, 0.003)))
-    for _ in range(1200):
-        pts.append((rng.uniform(2.0, 3.0), 2.0 + rng.normal(0, 0.01), rng.uniform(0, 1.4)))
+        pts.append((rng.uniform(0, 6), rng.uniform(0, 4), 2.8 + rng.normal(0, 0.003)))
+
+    # Interior clutter: deliberately short and low, should not become a BIM wall.
+    for _ in range(1000):
+        pts.append((rng.uniform(2.0, 3.0), 2.0 + rng.normal(0, 0.01), rng.uniform(0, 1.2)))
 
     np.savetxt(path, np.asarray(pts), fmt="%.6f")
 
@@ -49,24 +52,17 @@ def test_cli_contract(tmp_path: Path):
     make_room_cloud(cloud)
 
     request = {
-        "method": "Fuzzy-RESF",
-        "version": "1.0",
-        "preset": "Fuzzy-RESF",
+        "method": "Fuzzy-RESF-BIM",
+        "version": "2.0-object-bim",
+        "preset": "Fuzzy-RESF-BIM",
         "input": str(cloud),
         "output": str(out),
         "plane_spacing_m": 0.03,
         "plane_tolerance_m": 0.04,
         "raster_cell_m": 0.06,
         "angle_step_deg": 5.0,
-        "confidence_threshold": 0.45,
         "max_orientation_families": 6,
-        "max_points": 200000,
-        "multi_peak": True,
-        "topology": True,
-        "occlusion": True,
-        "fuzzy": True,
-        "instance_consolidation": True,
-        "geometric_feedback": True,
+        "max_points": 250000,
         "export_ifc": True,
         "export_diagnostics": True,
     }
@@ -81,23 +77,30 @@ def test_cli_contract(tmp_path: Path):
         check=False,
     )
     assert proc.returncode == 0, proc.stderr
-    assert (out / "result.json").exists()
-    assert (out / "walls.csv").exists()
-    assert (out / "openings.csv").exists()
-    assert (out / "fuzzy_resf.ifc").exists()
-    assert (out / "fuzzy_resf.ifc").stat().st_size > 0
+
+    for name in ("result.json", "bim_model.json", "walls.csv", "openings.csv", "spaces.csv", "slabs.csv", "fuzzy_resf.ifc"):
+        assert (out / name).exists(), name
+    assert (out / "fuzzy_resf.ifc").stat().st_size > 1024
 
     result = json.loads((out / "result.json").read_text(encoding="utf-8"))
     assert result["status"] == "success"
-    assert result["bim_walls"] >= 4
-    assert len(result["orientation_families_deg"]) >= 2
+    assert result["walls"] >= 4
+    assert result["spaces"] >= 1
+    assert result["slabs"] >= 2
+    assert result["doors"] >= 1
+    assert result["windows"] >= 1
 
     ifc = (out / "fuzzy_resf.ifc").read_text(encoding="utf-8").upper()
-    assert "IFCWALLSTANDARDCASE" in ifc
-    # Opening inference is deliberately conservative; when detected, exported semantics
-    # must be real IFC opening + fill relationships rather than decorative linework.
-    if result["openings"] > 0:
-        assert "IFCOPENINGELEMENT" in ifc
-        assert "IFCRELVOIDSELEMENT" in ifc
-        assert "IFCRELFILLSELEMENT" in ifc
-        assert ("IFCDOOR" in ifc) or ("IFCWINDOW" in ifc)
+    for token in (
+        "IFCBUILDINGSTOREY",
+        "IFCWALLSTANDARDCASE",
+        "IFCOPENINGELEMENT",
+        "IFCRELVOIDSELEMENT",
+        "IFCRELFILLSELEMENT",
+        "IFCDOOR",
+        "IFCWINDOW",
+        "IFCSLAB",
+        "IFCCOVERING",
+        "IFCSPACE",
+    ):
+        assert token in ifc, token
