@@ -11,7 +11,7 @@ permissions:
 jobs:
   backend-bim-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -22,6 +22,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt pytest
       - name: Compile Python backend
-        run: python -m py_compile backend/bim_reconstruction.py backend/fuzzy_resf_cli.py backend/ifc_bim_export.py
-      - name: Run BIM contract test
-        run: python -m pytest tests/test_backend_contract.py -q
+        run: |
+          python -m py_compile \
+            backend/bim_reconstruction.py \
+            backend/topology_completion.py \
+            backend/fuzzy_resf_cli.py \
+            backend/ifc_bim_export.py
+      - name: Run BIM regression suite
+        run: python -m pytest tests -q
