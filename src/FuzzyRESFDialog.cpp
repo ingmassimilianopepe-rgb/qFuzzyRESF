@@ -16,14 +16,15 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle(tr("Fuzzy-RESF Scan-to-BIM"));
-    resize(590, 650);
+    resize(610, 670);
 
     auto* root = new QVBoxLayout(this);
 
     auto* intro = new QLabel(
-        tr("Fuzzy-RESF-BIM 3.0 reconstructs semantic-topological BIM objects from the selected point cloud.\n"
+        tr("Fuzzy-RESF-BIM 3.1 reconstructs continuous semantic-topological BIM objects from the selected point cloud.\n"
            "The default preset performs multi-peak RESF, topology/occlusion reasoning, fuzzy inference, "
-           "instance consolidation, door/window reconstruction and geometric feedback.\n"
+           "coplanar-gap and junction completion, BIM instance consolidation, door/window reconstruction "
+           "and Cloud↔BIM geometric feedback.\n"
            "Paper ablation presets remain available for controlled experiments."),
         this);
     intro->setWordWrap(true);
@@ -32,14 +33,14 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* executionBox = new QGroupBox(tr("Execution"), this);
     auto* executionForm = new QFormLayout(executionBox);
     m_preset = new QComboBox(executionBox);
-    m_preset->addItems({"Fuzzy-RESF-BIM 3.0 (Semantic)",
+    m_preset->addItems({"Fuzzy-RESF-BIM 3.1 (Topology completion)",
                         "Fuzzy-RESF",
                         "RESF-Max",
                         "RESF-Multi",
                         "RESF-Multi + Topology",
                         "RESF-Multi + Topology + HardRules",
                         "Fuzzy-RESF + Semantic evidence"});
-    m_preset->setCurrentText("Fuzzy-RESF-BIM 3.0 (Semantic)");
+    m_preset->setCurrentText("Fuzzy-RESF-BIM 3.1 (Topology completion)");
     m_python = new QLineEdit("python", executionBox);
     executionForm->addRow(tr("Preset"), m_preset);
     executionForm->addRow(tr("Python executable"), m_python);
@@ -64,7 +65,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* reasoningBox = new QGroupBox(tr("Reasoning and object reconstruction"), this);
     auto* reasoningLayout = new QVBoxLayout(reasoningBox);
     m_multiPeak = new QCheckBox(tr("Multi-peak RESF"), reasoningBox);
-    m_topology = new QCheckBox(tr("Topology / room graph"), reasoningBox);
+    m_topology = new QCheckBox(tr("Topology / room graph + wall continuity"), reasoningBox);
     m_occlusion = new QCheckBox(tr("Occlusion reasoning"), reasoningBox);
     m_fuzzy = new QCheckBox(tr("Fuzzy evidence fusion"), reasoningBox);
     m_instance = new QCheckBox(tr("BIM instance consolidation"), reasoningBox);
@@ -94,22 +95,23 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
 
 void FuzzyRESFDialog::applyPreset(const QString& preset)
 {
-    const bool isSemanticV3 = preset == "Fuzzy-RESF-BIM 3.0 (Semantic)";
+    const bool isBimV31 = preset == "Fuzzy-RESF-BIM 3.1 (Topology completion)";
     const bool isMax = preset == "RESF-Max";
     const bool isMulti = !isMax;
-    const bool hasTopology = isSemanticV3 || preset.contains("Topology") || preset.startsWith("Fuzzy-RESF");
+    const bool hasTopology = isBimV31 || preset.contains("Topology") || preset.startsWith("Fuzzy-RESF");
     const bool isHardRules = preset.contains("HardRules");
-    const bool isFuzzy = isSemanticV3 || preset.startsWith("Fuzzy-RESF");
+    const bool isFuzzy = isBimV31 || preset.startsWith("Fuzzy-RESF");
 
     m_multiPeak->setChecked(isMulti);
     m_topology->setChecked(hasTopology);
     m_occlusion->setChecked(hasTopology);
     m_fuzzy->setChecked(isFuzzy && !isHardRules);
-    m_instance->setChecked(isSemanticV3 || isFuzzy || isHardRules);
-    m_feedback->setChecked(isSemanticV3 || isFuzzy);
+    m_instance->setChecked(isBimV31 || isFuzzy || isHardRules);
+    m_feedback->setChecked(isBimV31 || isFuzzy);
 
-    // The manuscript's frozen v1 support-grid and threshold are also the robust v3 defaults.
-    if (isSemanticV3)
+    // Paper-aligned baseline: centimetre plane sweep, 5 cm projected occupancy grid,
+    // 0.50 fuzzy acceptance. v3.1 adds object/topology completion after the RESF stage.
+    if (isBimV31)
     {
         m_planeSpacing->setValue(0.01);
         m_planeTolerance->setValue(0.03);
