@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 
-from fuzzy_resf_core import reconstruct, write_result_json, write_walls_csv
+from fuzzy_resf_core import reconstruct, write_openings_csv, write_result_json, write_walls_csv
 from ifc_export import write_ifc
 
 
@@ -22,20 +22,31 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        walls, summary = reconstruct(request)
-        write_walls_csv(walls, output_dir / "walls.csv")
+        walls, openings, summary = reconstruct(request)
+        walls_path = output_dir / "walls.csv"
+        openings_path = output_dir / "openings.csv"
+        ifc_path = output_dir / "fuzzy_resf.ifc"
+
+        write_walls_csv(walls, walls_path)
+        write_openings_csv(openings, openings_path)
         if request.get("export_ifc", True):
-            write_ifc(walls, output_dir / "fuzzy_resf.ifc")
+            if not walls:
+                raise RuntimeError("IFC export refused: no BIM wall instances were reconstructed")
+            write_ifc(walls, openings, ifc_path)
+            if not ifc_path.exists() or ifc_path.stat().st_size <= 0:
+                raise RuntimeError("IFC exporter produced an empty file")
+
         summary["preset"] = request.get("preset", "Fuzzy-RESF")
-        summary["walls_csv"] = str(output_dir / "walls.csv")
-        summary["ifc"] = str(output_dir / "fuzzy_resf.ifc") if request.get("export_ifc", True) else None
+        summary["walls_csv"] = str(walls_path)
+        summary["openings_csv"] = str(openings_path)
+        summary["ifc"] = str(ifc_path) if request.get("export_ifc", True) else None
         write_result_json(summary, output_dir / "result.json")
         return 0
     except Exception as exc:
         error = {
             "status": "error",
             "method": "Fuzzy-RESF",
-            "version": "1.0",
+            "version": "1.1-resf-bim",
             "error": f"{type(exc).__name__}: {exc}",
         }
         write_result_json(error, output_dir / "result.json")
