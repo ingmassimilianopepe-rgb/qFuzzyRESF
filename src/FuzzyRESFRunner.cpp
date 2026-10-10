@@ -49,8 +49,8 @@ FuzzyRESFRunner::Result FuzzyRESFRunner::run(ccPointCloud* cloud,
     xyzFile.close();
 
     QJsonObject request;
-    request["method"] = "Fuzzy-RESF";
-    request["version"] = "1.0";
+    request["method"] = "Fuzzy-RESF-BIM";
+    request["version"] = "3.0-semantic-topological";
     request["preset"] = p.preset;
     request["input"] = xyzPath;
     request["output"] = result.outputDirectory;
@@ -60,6 +60,7 @@ FuzzyRESFRunner::Result FuzzyRESFRunner::run(ccPointCloud* cloud,
     request["angle_step_deg"] = p.angleStepDeg;
     request["confidence_threshold"] = p.confidenceThreshold;
     request["max_orientation_families"] = p.maxOrientationFamilies;
+    request["max_points"] = 2000000;
     request["multi_peak"] = p.multiPeak;
     request["topology"] = p.topology;
     request["occlusion"] = p.occlusion;
