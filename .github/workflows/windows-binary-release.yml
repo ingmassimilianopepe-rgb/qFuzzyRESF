@@ -1,0 +1,173 @@
+name: Windows binary release
+
+on:
+  push:
+    branches: ["release/windows-v0.1"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-binary:
+    name: qFuzzyRESF Windows x64 portable bundle
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout qFuzzyRESF
+        uses: actions/checkout@v5
+        with:
+          path: qFuzzyRESF
+
+      - name: Checkout pinned CloudCompare
+        uses: actions/checkout@v5
+        with:
+          repository: CloudCompare/CloudCompare
+          ref: 92adb19a651f5711f7896d0e4351344703ff88c4
+          submodules: recursive
+          path: CloudCompare
+
+      - name: Install CloudCompare Windows dependencies
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          architecture: x64
+          auto-activate: false
+          activate-environment: CloudCompareDev
+          environment-file: CloudCompare/.ci/conda-win.yml
+          channels: conda-forge
+          conda-remove-defaults: "true"
+
+      - name: Configure MSVC console
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Select MSVC compiler
+        shell: pwsh
+        run: |
+          "CXX=cl.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CC=cl.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Inject qFuzzyRESF into CloudCompare
+        shell: pwsh
+        run: |
+          $dst = Join-Path $env:GITHUB_WORKSPACE 'CloudCompare\plugins\core\Standard\qFuzzyRESF'
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          robocopy (Join-Path $env:GITHUB_WORKSPACE 'qFuzzyRESF') $dst /E /XD .git .github | Out-Host
+          if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE }
+          $cmakeList = Join-Path $env:GITHUB_WORKSPACE 'CloudCompare\plugins\core\Standard\CMakeLists.txt'
+          $text = Get-Content $cmakeList -Raw
+          if ($text -notmatch 'add_subdirectory\(\s*qFuzzyRESF\s*\)') {
+            Add-Content $cmakeList "`nadd_subdirectory( qFuzzyRESF )`n"
+          }
+
+      - name: Configure CloudCompare + qFuzzyRESF
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          export CONDA_LIB_DIR="$CONDA_PREFIX/Library"
+          export EIGEN_ROOT_DIR="$CONDA_LIB_DIR/include/eigen3"
+          cmake \
+            -S CloudCompare \
+            -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/stage" \
+            -DCMAKE_PREFIX_PATH="$CONDA_LIB_DIR" \
+            -DEIGEN_ROOT_DIR="$EIGEN_ROOT_DIR" \
+            -DOPTION_BUILD_CCVIEWER=OFF \
+            -DPLUGIN_STANDARD_QFUZZYRESF=ON \
+            -DBUILD_TESTING=OFF
+
+      - name: Build and install portable CloudCompare bundle
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          cmake --build build --target install --parallel 2
+
+      - name: Add Fuzzy-RESF backend and setup helper
+        shell: pwsh
+        run: |
+          $appDir = Join-Path $env:GITHUB_WORKSPACE 'stage\CloudCompare'
+          if (!(Test-Path (Join-Path $appDir 'CloudCompare.exe'))) {
+            Write-Error "CloudCompare.exe was not installed in $appDir"
+            exit 1
+          }
+
+          $plugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QFUZZYRESF_PLUGIN.dll' | Select-Object -First 1
+          if (-not $plugin) {
+            Write-Error 'QFUZZYRESF_PLUGIN.dll not found in portable installation'
+            exit 1
+          }
+
+          $backendDst = Join-Path $appDir 'qFuzzyRESF\backend'
+          New-Item -ItemType Directory -Force -Path $backendDst | Out-Null
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'qFuzzyRESF\backend\*') $backendDst -Recurse -Force
+
+          $setup = @'
+          $ErrorActionPreference = 'Stop'
+          $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+          $backend = Join-Path $here 'CloudCompare\qFuzzyRESF\backend'
+          $python = Get-Command py -ErrorAction SilentlyContinue
+          if ($python) {
+              & py -3 -m pip install -r (Join-Path $backend 'requirements.txt')
+          } else {
+              $python = Get-Command python -ErrorAction SilentlyContinue
+              if (-not $python) { throw 'Python 3.10+ non trovato. Installare Python e rilanciare questo script.' }
+              & python -m pip install -r (Join-Path $backend 'requirements.txt')
+          }
+          Write-Host 'Dipendenze Python qFuzzyRESF installate.'
+          Write-Host 'Avviare CloudCompare\CloudCompare.exe, caricare una nuvola, selezionarla e usare Plugins -> Fuzzy-RESF Scan-to-BIM.'
+          '@
+          Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE 'stage\SETUP_QFUZZYRESF.ps1') -Value $setup -Encoding UTF8
+
+          $readme = @'
+          qFuzzyRESF v0.1 - Windows x64 portable bundle
+
+          Contenuto:
+          - CloudCompare Windows x64 compilato dal commit 92adb19a651f5711f7896d0e4351344703ff88c4
+          - qFuzzyRESF compilato dal branch release/windows-v0.1
+          - backend Python qFuzzyRESF incluso in CloudCompare\qFuzzyRESF\backend
+
+          Prima esecuzione:
+          1. Installare Python 3.10 o successivo se non presente.
+          2. Fare clic destro su SETUP_QFUZZYRESF.ps1 e scegliere "Esegui con PowerShell", oppure eseguire:
+             powershell -ExecutionPolicy Bypass -File .\SETUP_QFUZZYRESF.ps1
+          3. Avviare CloudCompare\CloudCompare.exe.
+          4. Aprire una point cloud e selezionare esattamente una nuvola nel DB Tree.
+          5. Aprire Plugins -> Fuzzy-RESF Scan-to-BIM.
+
+          Nota: il backend numerico v0.1 e il relativo gate TUB1 restano separati dalla compilazione binaria Windows.
+          '@
+          Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE 'stage\README_QFUZZYRESF.txt') -Value $readme -Encoding UTF8
+
+          Write-Host "Plugin binary: $($plugin.FullName)"
+
+      - name: Smoke-check packaged files
+        shell: pwsh
+        run: |
+          $appDir = Join-Path $env:GITHUB_WORKSPACE 'stage\CloudCompare'
+          Test-Path (Join-Path $appDir 'CloudCompare.exe') | Should -BeTrue
+          $plugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QFUZZYRESF_PLUGIN.dll' | Select-Object -First 1
+          if (-not $plugin) { throw 'Plugin DLL missing' }
+          if (!(Test-Path (Join-Path $appDir 'qFuzzyRESF\backend\requirements.txt'))) { throw 'Backend requirements missing' }
+
+      - name: Create ZIP and SHA256
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:GITHUB_WORKSPACE 'qFuzzyRESF-v0.1-Windows-x64-portable.zip'
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path (Join-Path $env:GITHUB_WORKSPACE 'stage\*') -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  qFuzzyRESF-v0.1-Windows-x64-portable.zip" | Set-Content (Join-Path $env:GITHUB_WORKSPACE 'qFuzzyRESF-v0.1-Windows-x64-portable.zip.sha256') -Encoding ASCII
+          Get-Item $zip | Format-List FullName,Length
+          Get-Content (Join-Path $env:GITHUB_WORKSPACE 'qFuzzyRESF-v0.1-Windows-x64-portable.zip.sha256')
+
+      - name: Upload Windows binary bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: qFuzzyRESF-v0.1-Windows-x64-portable
+          path: |
+            qFuzzyRESF-v0.1-Windows-x64-portable.zip
+            qFuzzyRESF-v0.1-Windows-x64-portable.zip.sha256
+          if-no-files-found: error
+          retention-days: 90
