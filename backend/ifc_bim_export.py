@@ -1,9 +1,10 @@
-"""Semantic IFC2X3 exporter for Fuzzy-RESF-BIM v2.
+"""Semantic IFC2X3 exporter for Fuzzy-RESF-BIM v3.
 
-Exports an actual object model: IfcBuildingStorey, IfcWallStandardCase,
+Exports an object model with IfcBuildingStorey, IfcWallStandardCase,
 IfcOpeningElement, IfcDoor, IfcWindow, IfcSlab/IfcCovering and IfcSpace.
 Openings are related to host walls with IfcRelVoidsElement and filled by doors/windows
-with IfcRelFillsElement.  Geometry uses simple swept solids for broad viewer support.
+with IfcRelFillsElement. Per-object Fuzzy-RESF evidence and provenance are retained in
+property sets so the IFC remains auditable rather than being only a geometry container.
 """
 
 from __future__ import annotations
@@ -18,8 +19,6 @@ _IFC64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$"
 
 
 def _guid() -> str:
-    # 128-bit UUID encoded into 22 IFC-safe characters.  This is deterministic in
-    # length/charset and avoids the invalid hexadecimal GlobalIds of the v0.1 writer.
     n = uuid.uuid4().int
     chars = []
     for _ in range(22):
@@ -66,8 +65,6 @@ def write_bim_ifc(model, path: str | Path, project_name: str = "Fuzzy-RESF-BIM")
     storey_ifc: dict[int, int] = {}
     storey_place: dict[int, int] = {}
     for s in model.storeys:
-        # Geometry is kept in the source cloud coordinate system. The Elevation field
-        # records the storey level while the placement remains at the building origin.
         place = add(f"IFCLOCALPLACEMENT(#{building_place},#{world_axis})")
         st = add(f"IFCBUILDINGSTOREY({_q(_guid())},#{owner},{_q('Storey_'+str(s.id))},$,$,#{place},$,$,.ELEMENT.,{float(s.z0):.9f})")
         storey_ifc[int(s.id)] = st
@@ -127,10 +124,17 @@ def write_bim_ifc(model, path: str | Path, project_name: str = "Fuzzy-RESF-BIM")
 
         props = [
             add(f"IFCPROPERTYSINGLEVALUE('ObjectConfidence',$,IFCREAL({float(w.confidence):.6f}),$)"),
-            add(f"IFCPROPERTYSINGLEVALUE('ObservedSupport',$,IFCREAL({float(w.support):.6f}),$)"),
-            add(f"IFCPROPERTYSINGLEVALUE('Continuity',$,IFCREAL({float(w.continuity):.6f}),$)"),
+            add(f"IFCPROPERTYSINGLEVALUE('ClassificationState',$,IFCLABEL({_q(getattr(w, 'state', 'Permanent'))}),$)"),
             add(f"IFCPROPERTYSINGLEVALUE('ReconstructionSource',$,IFCLABEL({_q(w.source)}),$)"),
-            add("IFCPROPERTYSINGLEVALUE('AlgorithmVersion',$,IFCLABEL('Fuzzy-RESF-BIM 2.0'),$)"),
+            add(f"IFCPROPERTYSINGLEVALUE('ObservedSupport',$,IFCREAL({float(w.support):.6f}),$)"),
+            add(f"IFCPROPERTYSINGLEVALUE('RESF_AreaSupport',$,IFCREAL({float(getattr(w, 'resf_A', 0.0)):.6f}),$)"),
+            add(f"IFCPROPERTYSINGLEVALUE('RESF_HorizontalExtent',$,IFCREAL({float(getattr(w, 'resf_EH', 0.0)):.6f}),$)"),
+            add(f"IFCPROPERTYSINGLEVALUE('RESF_VerticalExtent',$,IFCREAL({float(getattr(w, 'resf_EV', 0.0)):.6f}),$)"),
+            add(f"IFCPROPERTYSINGLEVALUE('RESF_Continuity',$,IFCREAL({float(getattr(w, 'resf_C', w.continuity)):.6f}),$)"),
+            add(f"IFCPROPERTYSINGLEVALUE('RESF_NormalConsistency',$,IFCREAL({float(getattr(w, 'resf_N', 0.0)):.6f}),$)"),
+            add(f"IFCPROPERTYSINGLEVALUE('RESF_OcclusionEvidence',$,IFCREAL({float(getattr(w, 'resf_O', 0.0)):.6f}),$)"),
+            add(f"IFCPROPERTYSINGLEVALUE('GeometricFeedback',$,IFCREAL({float(getattr(w, 'geometric_feedback', 1.0)):.6f}),$)"),
+            add("IFCPROPERTYSINGLEVALUE('AlgorithmVersion',$,IFCLABEL('Fuzzy-RESF-BIM 3.0 semantic-topological'),$)"),
         ]
         pset = add(f"IFCPROPERTYSET({_q(_guid())},#{owner},'Pset_FuzzyRESF_BIM',$,({','.join('#'+str(p) for p in props)}))")
         add(f"IFCRELDEFINESBYPROPERTIES({_q(_guid())},#{owner},$,$,(#{wall}),#{pset})")
@@ -163,7 +167,9 @@ def write_bim_ifc(model, path: str | Path, project_name: str = "Fuzzy-RESF-BIM")
         add(f"IFCRELFILLSELEMENT({_q(_guid())},#{owner},$,$,#{op},#{obj})")
         p_conf = add(f"IFCPROPERTYSINGLEVALUE('ObjectConfidence',$,IFCREAL({float(o.confidence):.6f}),$)")
         p_host = add(f"IFCPROPERTYSINGLEVALUE('HostWallId',$,IFCINTEGER({int(o.wall_id)}),$)")
-        pset = add(f"IFCPROPERTYSET({_q(_guid())},#{owner},'Pset_FuzzyRESF_Opening',$,(#{p_conf},#{p_host}))")
+        p_kind = add(f"IFCPROPERTYSINGLEVALUE('OpeningKind',$,IFCLABEL({_q(o.kind)}),$)")
+        p_source = add(f"IFCPROPERTYSINGLEVALUE('DetectionSource',$,IFCLABEL({_q(getattr(o, 'source', 'wall_local_vacancy'))}),$)")
+        pset = add(f"IFCPROPERTYSET({_q(_guid())},#{owner},'Pset_FuzzyRESF_Opening',$,(#{p_conf},#{p_host},#{p_kind},#{p_source}))")
         add(f"IFCRELDEFINESBYPROPERTIES({_q(_guid())},#{owner},$,$,(#{obj}),#{pset})")
 
     for slab in model.slabs:
