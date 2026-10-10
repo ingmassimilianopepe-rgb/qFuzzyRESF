@@ -38,6 +38,14 @@ jobs:
           channels: conda-forge
           conda-remove-defaults: "true"
 
+      - name: Ensure portable image runtime dependencies
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          conda install -y -n CloudCompareDev -c conda-forge libpng libjpeg-turbo
+          test -f "$CONDA_PREFIX/Library/bin/libpng16.dll"
+          echo "libpng16 runtime available: $CONDA_PREFIX/Library/bin/libpng16.dll"
+
       - name: Configure MSVC console
         uses: ilammy/msvc-dev-cmd@v1
 
@@ -104,7 +112,7 @@ jobs:
           fi
           cp -f "${dlls[@]}" "$app_dir/"
           echo "Bundled ${#dlls[@]} Conda runtime DLLs into $app_dir"
-          for required in zstd.dll double-conversion.dll pcre2-16.dll; do
+          for required in zstd.dll double-conversion.dll pcre2-16.dll libpng16.dll; do
             if [ ! -f "$app_dir/$required" ]; then
               echo "Required runtime DLL missing after bundling: $required" >&2
               exit 1
@@ -160,7 +168,7 @@ jobs:
           Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE 'stage\SETUP_QFUZZYRESF.ps1') -Value $setup -Encoding UTF8
 
           $readme = @'
-          qFuzzyRESF v0.1 - Windows x64 portable bundle
+          qFuzzyRESF - Windows x64 portable bundle
 
           Contenuto:
           - CloudCompare Windows x64 compilato dal commit 92adb19a651f5711f7896d0e4351344703ff88c4
@@ -168,17 +176,15 @@ jobs:
           - qLASIO abilitato per import/export LAS e LAZ tramite LASzip
           - qE57IO abilitato per import/export E57 tramite libE57Format
           - backend Python qFuzzyRESF incluso in CloudCompare\qFuzzyRESF\backend
-          - runtime DLL native del build Conda incluse nel bundle portable
+          - runtime DLL native del build Conda incluse nel bundle portable, incluso libpng16.dll
 
           Prima esecuzione:
           1. Installare Python 3.10 o successivo se non presente.
-          2. Fare clic destro su SETUP_QFUZZYRESF.ps1 e scegliere "Esegui con PowerShell", oppure eseguire:
+          2. Eseguire:
              powershell -ExecutionPolicy Bypass -File .\SETUP_QFUZZYRESF.ps1
           3. Avviare CloudCompare\CloudCompare.exe.
           4. Aprire una point cloud LAS/LAZ/E57 e selezionare esattamente una nuvola nel DB Tree.
           5. Aprire Plugins -> Fuzzy-RESF Scan-to-BIM.
-
-          Nota: il backend numerico v0.1 e il relativo gate TUB1 restano separati dalla compilazione binaria Windows.
           '@
           Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE 'stage\README_QFUZZYRESF.txt') -Value $readme -Encoding UTF8
 
@@ -198,12 +204,13 @@ jobs:
           $e57Plugin = Get-ChildItem -Path $appDir -Recurse -Filter 'QE57_IO_PLUGIN.dll' | Select-Object -First 1
           if (-not $e57Plugin) { throw 'qE57IO plugin DLL missing: E57 support unavailable' }
           if (!(Test-Path (Join-Path $appDir 'qFuzzyRESF\backend\requirements.txt'))) { throw 'Backend requirements missing' }
-          foreach ($dll in @('zstd.dll', 'double-conversion.dll', 'pcre2-16.dll')) {
+          foreach ($dll in @('zstd.dll', 'double-conversion.dll', 'pcre2-16.dll', 'libpng16.dll')) {
             if (!(Test-Path (Join-Path $appDir $dll))) { throw "Runtime DLL missing: $dll" }
           }
           Write-Host "Packaged qFuzzyRESF plugin: $($plugin.FullName)"
           Write-Host "Packaged qLASIO plugin: $($lasPlugin.FullName)"
           Write-Host "Packaged qE57IO plugin: $($e57Plugin.FullName)"
+          Write-Host "libpng16 runtime: $((Join-Path $appDir 'libpng16.dll'))"
 
       - name: Create ZIP and SHA256
         shell: pwsh
