@@ -11,13 +11,13 @@ class QSpinBox;
 
 struct FuzzyRESFParameters
 {
-    QString preset = "Fuzzy-RESF";
+    QString preset = "Fuzzy-RESF-BIM 3.0 (Semantic)";
     QString pythonExecutable = "python";
     double planeSpacing = 0.01;
     double planeTolerance = 0.03;
-    double rasterCell = 0.02;
+    double rasterCell = 0.05;
     double angleStepDeg = 2.0;
-    double confidenceThreshold = 0.45;
+    double confidenceThreshold = 0.50;
     int maxOrientationFamilies = 12;
     bool multiPeak = true;
     bool topology = true;
