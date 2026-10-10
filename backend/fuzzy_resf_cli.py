@@ -9,6 +9,7 @@ import sys
 
 from bim_reconstruction import reconstruct_bim, write_csv, write_model_json
 from ifc_bim_export import write_bim_ifc
+from opening_refinement import refine_floor_connected_doors
 
 
 def _write_summary(summary: dict, path: Path) -> None:
@@ -30,6 +31,26 @@ def main() -> int:
         model = reconstruct_bim(request)
         if not model.walls:
             raise RuntimeError("No BIM wall objects were reconstructed; IFC export aborted")
+
+        # Floor returns frequently mask the bottom row of a doorway in a binary wall
+        # occupancy raster. A second, density-normalised pass searches explicitly for
+        # floor-connected gaps with two jambs and a lintel.
+        extra_doors = refine_floor_connected_doors(
+            request["input"], model, float(request.get("raster_cell_m", 0.02))
+        )
+        if extra_doors:
+            model.openings.extend(extra_doors)
+            for i, opening in enumerate(model.openings, 1):
+                opening.id = i
+
+        model.summary["doors"] = sum(o.kind == "Door" for o in model.openings)
+        model.summary["windows"] = sum(o.kind == "Window" for o in model.openings)
+        model.summary["openings"] = len(model.openings)
+        if model.openings:
+            model.summary["warnings"] = [
+                w for w in model.summary.get("warnings", [])
+                if not w.startswith("No door/window openings")
+            ]
 
         walls_path = output_dir / "walls.csv"
         openings_path = output_dir / "openings.csv"
