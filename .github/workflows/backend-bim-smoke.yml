@@ -29,7 +29,9 @@ jobs:
             backend/paper_aligned_bim_v4.py \
             backend/architectural_graph_v5.py \
             backend/architectural_graph_v5_1.py \
+            backend/building_shell_v6.py \
             backend/fuzzy_resf_cli.py \
-            backend/ifc_bim_export.py
+            backend/ifc_bim_export.py \
+            backend/ifc_bim_export_v6.py
       - name: Run BIM regression suite
         run: python -m pytest tests -q
