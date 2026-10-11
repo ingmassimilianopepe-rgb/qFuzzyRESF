@@ -16,15 +16,15 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle(tr("Fuzzy-RESF Scan-to-BIM"));
-    resize(610, 670);
+    resize(640, 700);
 
     auto* root = new QVBoxLayout(this);
 
     auto* intro = new QLabel(
-        tr("Fuzzy-RESF-BIM 3.1 reconstructs continuous semantic-topological BIM objects from the selected point cloud.\n"
-           "The default preset performs multi-peak RESF, topology/occlusion reasoning, fuzzy inference, "
-           "coplanar-gap and junction completion, BIM instance consolidation, door/window reconstruction "
-           "and Cloud↔BIM geometric feedback.\n"
+        tr("Fuzzy-RESF-BIM 4.0 separates RESF surface hypotheses from physical BIM objects.\n"
+           "The default preset follows the manuscript evidence pipeline, then globally consolidates wall faces "
+           "into continuous physical walls, suppresses parallel sheet duplicates, reconstructs the room graph, "
+           "detects host-wall doors/windows and performs Cloud↔BIM geometric feedback.\n"
            "Paper ablation presets remain available for controlled experiments."),
         this);
     intro->setWordWrap(true);
@@ -33,14 +33,15 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* executionBox = new QGroupBox(tr("Execution"), this);
     auto* executionForm = new QFormLayout(executionBox);
     m_preset = new QComboBox(executionBox);
-    m_preset->addItems({"Fuzzy-RESF-BIM 3.1 (Topology completion)",
+    m_preset->addItems({"Fuzzy-RESF-BIM 4.0 (Paper-aligned object graph)",
+                        "Fuzzy-RESF-BIM 3.1 (Topology completion)",
                         "Fuzzy-RESF",
                         "RESF-Max",
                         "RESF-Multi",
                         "RESF-Multi + Topology",
                         "RESF-Multi + Topology + HardRules",
                         "Fuzzy-RESF + Semantic evidence"});
-    m_preset->setCurrentText("Fuzzy-RESF-BIM 3.1 (Topology completion)");
+    m_preset->setCurrentText("Fuzzy-RESF-BIM 4.0 (Paper-aligned object graph)");
     m_python = new QLineEdit("python", executionBox);
     executionForm->addRow(tr("Preset"), m_preset);
     executionForm->addRow(tr("Python executable"), m_python);
@@ -68,7 +69,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     m_topology = new QCheckBox(tr("Topology / room graph + wall continuity"), reasoningBox);
     m_occlusion = new QCheckBox(tr("Occlusion reasoning"), reasoningBox);
     m_fuzzy = new QCheckBox(tr("Fuzzy evidence fusion"), reasoningBox);
-    m_instance = new QCheckBox(tr("BIM instance consolidation"), reasoningBox);
+    m_instance = new QCheckBox(tr("Physical BIM wall/object consolidation"), reasoningBox);
     m_feedback = new QCheckBox(tr("Cloud↔BIM geometric feedback"), reasoningBox);
     for (QCheckBox* cb : {m_multiPeak, m_topology, m_occlusion, m_fuzzy, m_instance, m_feedback})
         reasoningLayout->addWidget(cb);
@@ -95,23 +96,26 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
 
 void FuzzyRESFDialog::applyPreset(const QString& preset)
 {
+    const bool isBimV4 = preset == "Fuzzy-RESF-BIM 4.0 (Paper-aligned object graph)";
     const bool isBimV31 = preset == "Fuzzy-RESF-BIM 3.1 (Topology completion)";
+    const bool isBim = isBimV4 || isBimV31;
     const bool isMax = preset == "RESF-Max";
     const bool isMulti = !isMax;
-    const bool hasTopology = isBimV31 || preset.contains("Topology") || preset.startsWith("Fuzzy-RESF");
+    const bool hasTopology = isBim || preset.contains("Topology") || preset.startsWith("Fuzzy-RESF");
     const bool isHardRules = preset.contains("HardRules");
-    const bool isFuzzy = isBimV31 || preset.startsWith("Fuzzy-RESF");
+    const bool isFuzzy = isBim || preset.startsWith("Fuzzy-RESF");
 
     m_multiPeak->setChecked(isMulti);
     m_topology->setChecked(hasTopology);
     m_occlusion->setChecked(hasTopology);
     m_fuzzy->setChecked(isFuzzy && !isHardRules);
-    m_instance->setChecked(isBimV31 || isFuzzy || isHardRules);
-    m_feedback->setChecked(isBimV31 || isFuzzy);
+    m_instance->setChecked(isBim || isFuzzy || isHardRules);
+    m_feedback->setChecked(isBim || isFuzzy);
 
-    // Paper-aligned baseline: centimetre plane sweep, 5 cm projected occupancy grid,
-    // 0.50 fuzzy acceptance. v3.1 adds object/topology completion after the RESF stage.
-    if (isBimV31)
+    // Frozen manuscript baseline: 1 cm candidate-plane sweep, 5 cm projected
+    // occupancy grid and 0.50 fuzzy acceptance. v4 changes the downstream
+    // physical-object reconstruction, not these benchmarked RESF settings.
+    if (isBim)
     {
         m_planeSpacing->setValue(0.01);
         m_planeTolerance->setValue(0.03);
