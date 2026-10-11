@@ -21,11 +21,12 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* root = new QVBoxLayout(this);
 
     auto* intro = new QLabel(
-        tr("Fuzzy-RESF-BIM 5.0 reconstructs a physical architectural graph instead of exporting accepted RESF planes as wall sheets.\n"
-           "RESF and fuzzy inference remain the evidence layer; wall geometry is now derived from height-persistent planimetric support, "
-           "paired wall faces, collinear completion and a global room graph. This specifically targets the comb-like parallel-sheet failure "
-           "observed on real LAS scans. Doors/windows are reconstructed as host-wall objects when their evidence is sufficient.\n"
-           "The older paper-aligned v4.1 preset is retained for regression comparison."),
+        tr("Fuzzy-RESF-BIM 5.1 reconstructs a physical architectural graph instead of exporting accepted RESF planes as wall sheets.\n"
+           "RESF and fuzzy inference remain the evidence layer; wall geometry is derived from height-persistent planimetric support, "
+           "clustered room-scale orientations, paired wall faces, collinear completion and a global room graph. This specifically targets "
+           "the comb-like parallel-sheet and angular side-lobe failures observed on real LAS scans. Doors/windows are reconstructed as "
+           "host-wall objects when their evidence is sufficient.\n"
+           "Older presets are retained for regression comparison."),
         this);
     intro->setWordWrap(true);
     root->addWidget(intro);
@@ -33,7 +34,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* executionBox = new QGroupBox(tr("Execution"), this);
     auto* executionForm = new QFormLayout(executionBox);
     m_preset = new QComboBox(executionBox);
-    m_preset->addItems({"Fuzzy-RESF-BIM 5.0 (Persistent architectural graph)",
+    m_preset->addItems({"Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)",
                         "Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)",
                         "Fuzzy-RESF-BIM 3.1 (Topology completion)",
                         "Fuzzy-RESF",
@@ -42,7 +43,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
                         "RESF-Multi + Topology",
                         "RESF-Multi + Topology + HardRules",
                         "Fuzzy-RESF + Semantic evidence"});
-    m_preset->setCurrentText("Fuzzy-RESF-BIM 5.0 (Persistent architectural graph)");
+    m_preset->setCurrentText("Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)");
     m_python = new QLineEdit("python", executionBox);
     executionForm->addRow(tr("Preset"), m_preset);
     executionForm->addRow(tr("Python executable"), m_python);
@@ -97,10 +98,10 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
 
 void FuzzyRESFDialog::applyPreset(const QString& preset)
 {
-    const bool isBimV50 = preset == "Fuzzy-RESF-BIM 5.0 (Persistent architectural graph)";
+    const bool isBimV51 = preset == "Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)";
     const bool isBimV41 = preset == "Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)";
     const bool isBimV31 = preset == "Fuzzy-RESF-BIM 3.1 (Topology completion)";
-    const bool isBim = isBimV50 || isBimV41 || isBimV31;
+    const bool isBim = isBimV51 || isBimV41 || isBimV31;
     const bool isMax = preset == "RESF-Max";
     const bool isMulti = !isMax;
     const bool hasTopology = isBim || preset.contains("Topology") || preset.startsWith("Fuzzy-RESF");
@@ -114,7 +115,7 @@ void FuzzyRESFDialog::applyPreset(const QString& preset)
     m_instance->setChecked(isBim || isFuzzy || isHardRules);
     m_feedback->setChecked(isBim || isFuzzy);
 
-    // Preserve the frozen manuscript RESF sampling settings. v5 changes the physical
+    // Preserve the frozen manuscript RESF sampling settings. v5.1 changes the physical
     // object-reconstruction stage, not the centimetre plane sweep or fuzzy threshold.
     if (isBim)
     {
