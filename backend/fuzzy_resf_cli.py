@@ -8,12 +8,23 @@ from pathlib import Path
 import sys
 
 from bim_reconstruction import write_csv, write_model_json
-from architectural_graph_v5_1 import reconstruct_bim
-from ifc_bim_export import write_bim_ifc
+from architectural_graph_v5_1 import reconstruct_bim as reconstruct_v51
+from building_shell_v6 import reconstruct_bim as reconstruct_v6
+from ifc_bim_export_v6 import write_bim_ifc
 
 
 def _write_summary(summary: dict, path: Path) -> None:
     path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+
+def _select_reconstructor(request: dict):
+    preset = str(request.get("preset", ""))
+    version = str(request.get("version", ""))
+    # Keep the frozen regression path callable explicitly.  CloudCompare v6 uses the new
+    # auto scene classifier by default; old v5.1 requests remain reproducible for ablations.
+    if "5.1" in preset or version.startswith("5.1"):
+        return reconstruct_v51
+    return reconstruct_v6
 
 
 def main() -> int:
@@ -25,10 +36,10 @@ def main() -> int:
     request = json.loads(request_path.read_text(encoding="utf-8"))
     output_dir = Path(request["output"])
     output_dir.mkdir(parents=True, exist_ok=True)
-
     result_path = output_dir / "result.json"
+
     try:
-        model = reconstruct_bim(request)
+        model = _select_reconstructor(request)(request)
         if not model.walls:
             raise RuntimeError("No accepted physical BIM wall instances were reconstructed; IFC export aborted")
 
@@ -36,6 +47,7 @@ def main() -> int:
         openings_path = output_dir / "openings.csv"
         spaces_path = output_dir / "spaces.csv"
         slabs_path = output_dir / "slabs.csv"
+        roofs_path = output_dir / "roofs.csv"
         candidates_path = output_dir / "resf_candidates.csv"
         model_path = output_dir / "bim_model.json"
         ifc_path = output_dir / "fuzzy_resf.ifc"
@@ -51,12 +63,20 @@ def main() -> int:
                   ["id", "storey_id", "name", "polygon", "z0", "z1", "area", "confidence"])
         write_csv(model.slabs, slabs_path,
                   ["id", "storey_id", "kind", "polygon", "z", "thickness", "confidence"])
+        roofs = list(getattr(model, "roofs", []))
+        write_csv(roofs, roofs_path,
+                  ["id", "storey_id", "vertices", "thickness", "confidence", "source"])
         write_csv(model.candidates, candidates_path, [
             "id", "storey_id", "theta_deg", "d", "t0", "t1", "z0", "z1",
             "A_star", "E_H", "E_V", "C", "N", "O", "rho", "semantic_wall",
             "T_F", "T_C", "T_W", "T_B", "T_R", "T_CP", "G", "confidence", "state",
         ])
         write_model_json(model, model_path)
+        if roofs:
+            payload = json.loads(model_path.read_text(encoding="utf-8"))
+            from dataclasses import asdict
+            payload["roofs"] = [asdict(x) for x in roofs]
+            model_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
         if request.get("export_ifc", True):
             write_bim_ifc(model, ifc_path)
@@ -71,12 +91,14 @@ def main() -> int:
                 raise RuntimeError("IFC validation failed: detected windows were not exported as IfcWindow")
             if model.spaces and "IFCSPACE" not in text:
                 raise RuntimeError("IFC validation failed: reconstructed spaces were not exported as IfcSpace")
+            if roofs and ".ROOF." not in text:
+                raise RuntimeError("IFC validation failed: reconstructed roof facets are missing from the IFC")
 
         summary = dict(model.summary)
         summary.update({
-            "preset": request.get("preset", "Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)"),
+            "preset": request.get("preset", "Fuzzy-RESF-BIM 6.0 (Adaptive building envelope)"),
             "walls_csv": str(walls_path), "openings_csv": str(openings_path),
-            "spaces_csv": str(spaces_path), "slabs_csv": str(slabs_path),
+            "spaces_csv": str(spaces_path), "slabs_csv": str(slabs_path), "roofs_csv": str(roofs_path),
             "resf_candidates_csv": str(candidates_path), "bim_model_json": str(model_path),
             "ifc": str(ifc_path) if request.get("export_ifc", True) else None,
         })
@@ -86,7 +108,7 @@ def main() -> int:
         return 0
     except Exception as exc:
         error = {"status": "error", "method": "Fuzzy-RESF-BIM",
-                 "version": "5.1-persistent-architectural-graph",
+                 "version": "6.0-building-envelope-graph",
                  "error": f"{type(exc).__name__}: {exc}"}
         _write_summary(error, result_path)
         print(error["error"], file=sys.stderr)
