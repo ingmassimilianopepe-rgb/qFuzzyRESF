@@ -1,11 +1,11 @@
 """Refinement layer for Fuzzy-RESF-BIM v4.1.
 
 This layer converts the manuscript RESF hypotheses into a physical architectural graph.
-It rejects three non-BIM failure modes exposed by stress tests and real scans:
-short foreground planes parallel to a real wall, short angular side-lobes generated near
-corners/furniture, and extra interior planes that do not participate in a meaningful room
-graph. The manuscript RESF extraction and fuzzy evidence remain unchanged; these changes
-are confined to the downstream object reconstruction/consolidation stage.
+It rejects non-BIM failure modes exposed by stress tests and real scans: short foreground
+planes parallel to a real wall, short angular side-lobes generated near corners/furniture,
+and extra interior planes that do not participate in a meaningful room graph. The
+manuscript RESF extraction and fuzzy evidence remain unchanged; these changes are confined
+to downstream physical-object reconstruction/consolidation.
 """
 
 from __future__ import annotations
@@ -106,17 +106,38 @@ def suppress_parallel_duplicates(walls: list[base.Wall]) -> list[base.Wall]:
 _original_prune=core.prune_wall_graph
 
 
-def _closed_graph_filter(walls: list[base.Wall]) -> list[base.Wall]:
-    """Prefer meaningful room cycles over small triangular/oblique support artefacts.
+def _dominant_orthogonal_prune(walls: list[base.Wall]) -> list[base.Wall]:
+    """Suppress short angular lobes only when the object graph is clearly Manhattan-dominant."""
+    if len(walls)<5: return walls
+    fam={}
+    for w in walls:
+        k=_family_key(w.theta_deg)
+        fam[k]=fam.get(k,0.0)+core._wall_length(w)*max(w.confidence,0.1)
+    ranked=sorted(fam.items(),key=lambda kv:kv[1],reverse=True)
+    total=sum(v for _,v in ranked)
+    if len(ranked)<2 or total<=0: return walls
+    pair=None
+    for i,(k0,s0) in enumerate(ranked[:4]):
+        for k1,s1 in ranked[i+1:5]:
+            if 72.0<=base._circular_distance(k0,k1)<=108.0 and (s0+s1)>=0.72*total:
+                pair=(k0,k1,s0+s1); break
+        if pair: break
+    if pair is None: return walls
+    k0,k1,_=pair
+    out=[]
+    for w in walls:
+        k=_family_key(w.theta_deg)
+        on_dominant=min(base._circular_distance(k,k0),base._circular_distance(k,k1))<=10.0
+        L=core._wall_length(w)
+        # Keep any substantial oblique wall; only short off-axis surfaces are treated as
+        # RESF angular lobes in a strongly orthogonal room explanation.
+        if not on_dominant and L<1.50:
+            continue
+        out.append(w)
+    return out if len(out)>=4 else walls
 
-    A translated-plane detector can generate high-confidence diagonal side-lobes around a
-    corner or a piece of furniture.  Those lines can form tiny polygons when they intersect
-    true room walls, so merely asking whether a wall belongs to *any* cycle is insufficient.
-    We therefore define the architectural cycle set from polygons that are large relative to
-    the dominant room polygon.  Short genuine walls are still retained when they lie on a
-    meaningful room boundary; partitions outside that boundary need stronger global-family
-    support and must connect at both ends.
-    """
+
+def _closed_graph_filter(walls: list[base.Wall]) -> list[base.Wall]:
     if len(walls)<4: return walls
     lines=[LineString([(w.x1,w.y1),(w.x2,w.y2)]) for w in walls]
     try:
@@ -124,39 +145,26 @@ def _closed_graph_filter(walls: list[base.Wall]) -> list[base.Wall]:
     except Exception:
         return walls
     if not polys: return walls
-
     largest=max(p.area for p in polys)
-    area_cut=max(1.50,0.15*largest)
-    architectural=[p for p in polys if p.area>=area_cut]
-    if not architectural:
-        architectural=[max(polys,key=lambda p:p.area)]
+    architectural=[p for p in polys if p.area>=max(1.50,0.15*largest)]
+    if not architectural: architectural=[max(polys,key=lambda p:p.area)]
     boundary=unary_union([p.boundary for p in architectural])
-
     family_strength={}
     for w in walls:
-        k=_family_key(w.theta_deg)
-        family_strength[k]=family_strength.get(k,0.0)+core._wall_length(w)*max(w.confidence,0.1)
+        k=_family_key(w.theta_deg); family_strength[k]=family_strength.get(k,0.0)+core._wall_length(w)*max(w.confidence,0.1)
     dominant=max(family_strength.values()) if family_strength else 1.0
-
     kept=[]
     for i,(w,line) in enumerate(zip(walls,lines)):
         on_boundary=line.intersection(boundary.buffer(0.08)).length/max(line.length,1e-9)
-        d0,d1=core._endpoint_degree(walls,i,0.34)
-        fam=family_strength.get(_family_key(w.theta_deg),0.0)
-        strong_partition=(
-            d0>0 and d1>0 and line.length>=1.50 and
-            w.resf_EV>=0.72 and w.confidence>=0.48 and fam>=0.18*dominant
-        )
-        if on_boundary>=0.60 or strong_partition:
-            kept.append(w)
-
+        d0,d1=core._endpoint_degree(walls,i,0.34); fam=family_strength.get(_family_key(w.theta_deg),0.0)
+        strong_partition=(d0>0 and d1>0 and line.length>=1.50 and w.resf_EV>=0.72 and w.confidence>=0.48 and fam>=0.18*dominant)
+        if on_boundary>=0.60 or strong_partition: kept.append(w)
     return kept if len(kept)>=4 else walls
 
 
 def prune_wall_graph(walls: list[base.Wall]) -> list[base.Wall]:
     walls=_original_prune(walls)
     if len(walls)<2: return walls
-
     strength=lambda w: core._wall_length(w)*max(w.confidence,0.05)*max(w.resf_EV,0.15)
     ordered=sorted(walls,key=strength,reverse=True); kept=[]
     for w in ordered:
@@ -166,17 +174,15 @@ def prune_wall_graph(walls: list[base.Wall]) -> list[base.Wall]:
             Lk=core._wall_length(k)
             if Lk<=Lw: continue
             _,_,dk,b0,b1=core._wall_axis(k,w.theta_deg)
-            dd=abs(dw-dk); covered=_short_coverage(a0,a1,b0,b1)
-            if 0.08<=dd<=0.70 and covered>=0.72 and Lw<=0.60*Lk and w.resf_EV<0.80:
+            if 0.08<=abs(dw-dk)<=0.70 and _short_coverage(a0,a1,b0,b1)>=0.72 and Lw<=0.60*Lk and w.resf_EV<0.80:
                 shadow=True; break
         if not shadow: kept.append(w)
-
     prelim=[]
     for i,w in enumerate(kept):
         L=core._wall_length(w); d0,d1=core._endpoint_degree(kept,i,0.32)
         if L<1.50 and d0==0 and d1==0 and w.resf_EV<0.74: continue
         prelim.append(w)
-
+    prelim=_dominant_orthogonal_prune(prelim)
     final=_closed_graph_filter(prelim)
     for i,w in enumerate(final,1): w.id=i
     return final
@@ -195,4 +201,5 @@ def reconstruct_bim(request: dict) -> base.BIMModel:
     model.summary["orientation_selection"]="room-scale-support-with-orthogonal-dominance"
     model.summary["foreground_parallel_clutter_rejection"]=True
     model.summary["closed_room_graph_selection"]="dominant-area-cycle-aware"
+    model.summary["short_angular_lobe_rejection"]=True
     return model
