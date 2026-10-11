@@ -21,10 +21,10 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* root = new QVBoxLayout(this);
 
     auto* intro = new QLabel(
-        tr("Fuzzy-RESF-BIM 4.0 separates RESF surface hypotheses from physical BIM objects.\n"
+        tr("Fuzzy-RESF-BIM 4.1 separates RESF surface hypotheses from physical BIM objects.\n"
            "The default preset follows the manuscript evidence pipeline, then globally consolidates wall faces "
-           "into continuous physical walls, suppresses parallel sheet duplicates, reconstructs the room graph, "
-           "detects host-wall doors/windows and performs Cloud↔BIM geometric feedback.\n"
+           "into continuous physical walls, suppresses parallel sheets and short angular side-lobes, reconstructs "
+           "the room graph, detects host-wall doors/windows and performs Cloud↔BIM geometric feedback.\n"
            "Paper ablation presets remain available for controlled experiments."),
         this);
     intro->setWordWrap(true);
@@ -33,7 +33,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* executionBox = new QGroupBox(tr("Execution"), this);
     auto* executionForm = new QFormLayout(executionBox);
     m_preset = new QComboBox(executionBox);
-    m_preset->addItems({"Fuzzy-RESF-BIM 4.0 (Paper-aligned object graph)",
+    m_preset->addItems({"Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)",
                         "Fuzzy-RESF-BIM 3.1 (Topology completion)",
                         "Fuzzy-RESF",
                         "RESF-Max",
@@ -41,7 +41,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
                         "RESF-Multi + Topology",
                         "RESF-Multi + Topology + HardRules",
                         "Fuzzy-RESF + Semantic evidence"});
-    m_preset->setCurrentText("Fuzzy-RESF-BIM 4.0 (Paper-aligned object graph)");
+    m_preset->setCurrentText("Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)");
     m_python = new QLineEdit("python", executionBox);
     executionForm->addRow(tr("Preset"), m_preset);
     executionForm->addRow(tr("Python executable"), m_python);
@@ -96,9 +96,9 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
 
 void FuzzyRESFDialog::applyPreset(const QString& preset)
 {
-    const bool isBimV4 = preset == "Fuzzy-RESF-BIM 4.0 (Paper-aligned object graph)";
+    const bool isBimV41 = preset == "Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)";
     const bool isBimV31 = preset == "Fuzzy-RESF-BIM 3.1 (Topology completion)";
-    const bool isBim = isBimV4 || isBimV31;
+    const bool isBim = isBimV41 || isBimV31;
     const bool isMax = preset == "RESF-Max";
     const bool isMulti = !isMax;
     const bool hasTopology = isBim || preset.contains("Topology") || preset.startsWith("Fuzzy-RESF");
@@ -113,7 +113,7 @@ void FuzzyRESFDialog::applyPreset(const QString& preset)
     m_feedback->setChecked(isBim || isFuzzy);
 
     // Frozen manuscript baseline: 1 cm candidate-plane sweep, 5 cm projected
-    // occupancy grid and 0.50 fuzzy acceptance. v4 changes the downstream
+    // occupancy grid and 0.50 fuzzy acceptance. v4.1 changes the downstream
     // physical-object reconstruction, not these benchmarked RESF settings.
     if (isBim)
     {
