@@ -11,6 +11,7 @@ from bim_reconstruction import write_csv, write_model_json
 from architectural_graph_v5_1 import reconstruct_bim as reconstruct_v51
 from building_shell_v6 import reconstruct_bim as reconstruct_v6
 from building_shell_v6_1 import reconstruct_bim as reconstruct_v61
+from building_shell_v6_2 import reconstruct_bim as reconstruct_v62
 from ifc_bim_export_v6 import write_bim_ifc
 
 
@@ -21,13 +22,13 @@ def _write_summary(summary: dict, path: Path) -> None:
 def _select_reconstructor(request: dict):
     preset = str(request.get("preset", ""))
     version = str(request.get("version", ""))
-    # Keep the frozen regression path callable explicitly. CloudCompare now uses v6.1 by
-    # default; v5.1/v6.0 requests remain reproducible for ablations.
     if "5.1" in preset or version.startswith("5.1"):
         return reconstruct_v51
     if "6.0" in preset or version.startswith("6.0"):
         return reconstruct_v6
-    return reconstruct_v61
+    if "6.1" in preset or version.startswith("6.1"):
+        return reconstruct_v61
+    return reconstruct_v62
 
 
 def main() -> int:
@@ -106,7 +107,7 @@ def main() -> int:
 
         summary = dict(model.summary)
         summary.update({
-            "preset": request.get("preset", "Fuzzy-RESF-BIM 6.1 (Robust historic building envelope)"),
+            "preset": request.get("preset", "Fuzzy-RESF-BIM 6.2 (Component-aware historic building envelope)"),
             "walls_csv": str(walls_path), "openings_csv": str(openings_path),
             "spaces_csv": str(spaces_path), "slabs_csv": str(slabs_path), "roofs_csv": str(roofs_path), "columns_csv": str(columns_path),
             "resf_candidates_csv": str(candidates_path), "bim_model_json": str(model_path),
@@ -118,7 +119,7 @@ def main() -> int:
         return 0
     except Exception as exc:
         error = {"status": "error", "method": "Fuzzy-RESF-BIM",
-                 "version": "6.1-robust-building-envelope",
+                 "version": "6.2-component-aware-building-envelope",
                  "error": f"{type(exc).__name__}: {exc}"}
         _write_summary(error, result_path)
         print(error["error"], file=sys.stderr)
