@@ -10,6 +10,7 @@ import numpy as np
 
 def make_room_cloud(path: Path) -> None:
     rng=np.random.default_rng(7); pts=[]
+    # 6 x 4 x 2.8 m room. South wall has a door; north wall has a window.
     for _ in range(12000):
         x=rng.uniform(0,6); z=rng.uniform(0,2.8)
         if not (2.55<=x<=3.45 and z<=2.1): pts.append((x,rng.normal(0,0.004),z))
@@ -20,10 +21,27 @@ def make_room_cloud(path: Path) -> None:
         y=rng.uniform(0,4); z=rng.uniform(0,2.8)
         pts.append((rng.normal(0,0.004),y,z)); pts.append((6+rng.normal(0,0.004),y,z))
     for _ in range(5000):
-        pts.append((rng.uniform(0,6),rng.uniform(0,4),rng.normal(0,0.003))); pts.append((rng.uniform(0,6),rng.uniform(0,4),2.8+rng.normal(0,0.003)))
+        pts.append((rng.uniform(0,6),rng.uniform(0,4),rng.normal(0,0.003)))
+        pts.append((rng.uniform(0,6),rng.uniform(0,4),2.8+rng.normal(0,0.003)))
+
+    # Interior furniture plane.
     for _ in range(1200): pts.append((rng.uniform(2,3),2+rng.normal(0,0.01),rng.uniform(0,1.2)))
-    for y0 in (0.18,0.24,0.31,0.39):
-        for _ in range(650): pts.append((rng.uniform(0.6,1.7),y0+rng.normal(0,0.005),rng.uniform(0,1.65)))
+
+    # Deliberately reproduce the real-scan "comb" failure: several dense, parallel,
+    # wall-like panels close to the south wall, but only furniture-height. A BIM object
+    # stage must reject these instead of exporting them as repeated wall sheets.
+    for y0 in (0.12,0.18,0.24,0.31,0.39,0.47):
+        for _ in range(900):
+            pts.append((rng.uniform(0.45,1.95),y0+rng.normal(0,0.004),rng.uniform(0,1.65)))
+
+    # Short diagonal furniture faces that previously generated angular RESF side-lobes.
+    for angle in (28.0,42.0,57.0):
+        th=np.deg2rad(angle); u=np.array([np.cos(th),np.sin(th)])
+        n=np.array([-u[1],u[0]])
+        for _ in range(450):
+            s=rng.uniform(-0.55,0.55); z=rng.uniform(0,1.45)
+            xy=np.array([1.25,0.65])+u*s+n*rng.normal(0,0.004)
+            pts.append((xy[0],xy[1],z))
     np.savetxt(path,np.asarray(pts),fmt="%.6f")
 
 
@@ -36,7 +54,7 @@ def _wall_debug(rows):
 
 def test_cli_contract(tmp_path: Path):
     root=Path(__file__).resolve().parents[1]; backend=root/"backend"; cloud=tmp_path/"room.xyz"; out=tmp_path/"out"; out.mkdir(); make_room_cloud(cloud)
-    request={"method":"Fuzzy-RESF-BIM","version":"4.1-paper-aligned-object-graph","preset":"Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)","input":str(cloud),"output":str(out),"plane_spacing_m":0.01,"plane_tolerance_m":0.03,"raster_cell_m":0.05,"angle_step_deg":2.0,"confidence_threshold":0.50,"max_orientation_families":12,"max_points":250000,"multi_peak":True,"topology":True,"occlusion":True,"fuzzy":True,"instance_consolidation":True,"geometric_feedback":True,"export_ifc":True,"export_diagnostics":True}
+    request={"method":"Fuzzy-RESF-BIM","version":"5.0-persistent-architectural-graph","preset":"Fuzzy-RESF-BIM 5.0 (Persistent architectural graph)","input":str(cloud),"output":str(out),"plane_spacing_m":0.01,"plane_tolerance_m":0.03,"raster_cell_m":0.05,"angle_step_deg":2.0,"confidence_threshold":0.50,"max_orientation_families":12,"max_points":250000,"multi_peak":True,"topology":True,"occlusion":True,"fuzzy":True,"instance_consolidation":True,"geometric_feedback":True,"export_ifc":True,"export_diagnostics":True}
     request_path=tmp_path/"request.json"; request_path.write_text(json.dumps(request),encoding="utf-8")
     proc=subprocess.run([sys.executable,str(backend/"fuzzy_resf_cli.py"),"--request",str(request_path)],cwd=backend,capture_output=True,text=True,check=False)
     assert proc.returncode==0,proc.stderr
@@ -49,7 +67,9 @@ def test_cli_contract(tmp_path: Path):
         print("BIM WALL REGRESSION SUMMARY",json.dumps(result,sort_keys=True))
         for wall in debug: print("BIM WALL",json.dumps(wall,sort_keys=True))
     assert result["status"]=="success"
-    assert result["version"]=="4.1-paper-aligned-object-graph"
+    assert result["version"]=="5.0-persistent-architectural-graph"
+    assert result["resf_role"]=="evidence_and_confidence_not_direct_wall_geometry"
+    assert result["exact_frozen_v1_reproduction"] is False
     assert 4<=result["walls"]<=6,result
     assert result["wall_duplicate_pairs"]==0,result
     assert result["wall_junction_ratio"]>=0.50,result
@@ -58,9 +78,14 @@ def test_cli_contract(tmp_path: Path):
     assert rows and "state" in rows[0]
     lengths=[math.hypot(float(r["x2"])-float(r["x1"]),float(r["y2"])-float(r["y1"])) for r in rows]
     assert min(lengths)>=0.55 and max(lengths)<=7.0
+    # No furniture-height comb sheet may survive as a physical wall instance.
+    assert all(float(r["z1"])-float(r["z0"])>=2.2 for r in rows)
     model=json.loads((out/"bim_model.json").read_text(encoding="utf-8"))
     assert len(model["walls"])==result["walls"]
-    assert any(o["kind"]=="Door" for o in model["openings"]); assert any(o["kind"]=="Window" for o in model["openings"]); assert model["spaces"]
-    assert any(s["kind"]=="FLOOR" for s in model["slabs"]); assert any(s["kind"]=="CEILING" for s in model["slabs"])
+    assert any(o["kind"]=="Door" for o in model["openings"])
+    assert any(o["kind"]=="Window" for o in model["openings"])
+    assert model["spaces"]
+    assert any(s["kind"]=="FLOOR" for s in model["slabs"])
+    assert any(s["kind"]=="CEILING" for s in model["slabs"])
     ifc=(out/"fuzzy_resf.ifc").read_text(encoding="utf-8").upper()
     for token in ("IFCBUILDINGSTOREY","IFCWALLSTANDARDCASE","IFCOPENINGELEMENT","IFCRELVOIDSELEMENT","IFCRELFILLSELEMENT","IFCDOOR","IFCWINDOW","IFCSLAB","IFCCOVERING","IFCSPACE"): assert token in ifc,token
