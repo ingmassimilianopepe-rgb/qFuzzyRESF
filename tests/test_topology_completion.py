@@ -34,14 +34,14 @@ def make_fragmented_room(path: Path) -> None:
 
 def test_fragmented_room_becomes_continuous_bim(tmp_path: Path):
     root=Path(__file__).resolve().parents[1]; backend=root/"backend"; cloud=tmp_path/"fragmented_room.xyz"; out=tmp_path/"out"; out.mkdir(); make_fragmented_room(cloud)
-    request={"method":"Fuzzy-RESF-BIM","version":"4.1-paper-aligned-object-graph","preset":"Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)","input":str(cloud),"output":str(out),"plane_spacing_m":0.01,"plane_tolerance_m":0.03,"raster_cell_m":0.05,"angle_step_deg":2.0,"confidence_threshold":0.50,"max_orientation_families":12,"max_points":300000,"multi_peak":True,"topology":True,"occlusion":True,"fuzzy":True,"instance_consolidation":True,"geometric_feedback":True,"export_ifc":True,"export_diagnostics":True}
+    request={"method":"Fuzzy-RESF-BIM","version":"5.1-persistent-architectural-graph","preset":"Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)","input":str(cloud),"output":str(out),"plane_spacing_m":0.01,"plane_tolerance_m":0.03,"raster_cell_m":0.05,"angle_step_deg":2.0,"confidence_threshold":0.50,"max_orientation_families":12,"max_points":300000,"multi_peak":True,"topology":True,"occlusion":True,"fuzzy":True,"instance_consolidation":True,"geometric_feedback":True,"export_ifc":True,"export_diagnostics":True}
     request_path=tmp_path/"request.json"; request_path.write_text(json.dumps(request),encoding="utf-8")
     proc=subprocess.run([sys.executable,str(backend/"fuzzy_resf_cli.py"),"--request",str(request_path)],cwd=backend,capture_output=True,text=True,check=False)
     assert proc.returncode==0,proc.stderr
     result=json.loads((out/"result.json").read_text(encoding="utf-8"))
     assert result["status"]=="success"
-    assert result["version"]=="4.1-paper-aligned-object-graph"
-    assert result["wall_reconstruction"]=="RESF_face_tracks_to_paired_physical_walls_to_global_room_graph"
+    assert result["version"]=="5.1-persistent-architectural-graph"
+    assert result["wall_reconstruction"]=="height_persistent_footprint_to_face_tracks_to_physical_wall_graph"
     assert 4<=result["walls"]<=5,result
     assert result["wall_duplicate_pairs"]==0,result
     assert result["spaces"]>=1 and result["slabs"]>=2
