@@ -1,9 +1,11 @@
 """Refinement layer for Fuzzy-RESF-BIM v4.1.
 
-The v4 object graph was intentionally conservative, but the first stress regression showed
-that a short planar cabinet face could still be paired with a much longer wall face because
-interval overlap had been normalized by the shorter interval.  This module tightens the
-physical-object inference without changing the manuscript RESF evidence stage.
+The v4 object graph was intentionally conservative, but stress regression showed two
+remaining failure modes typical of indoor scans: (1) a short cabinet face could be paired
+with a much longer wall face if overlap was normalized by the shorter interval, and (2)
+unmatched furniture faces parallel to a real wall could survive as full-height BIM sheets.
+This layer fixes both at the physical-object stage without changing the manuscript RESF
+candidate/evidence stage.
 """
 
 from __future__ import annotations
@@ -20,20 +22,26 @@ def _coverage_overlap(a0: float, a1: float, b0: float, b1: float) -> float:
     return inter/max(1e-9,max(a1-a0,b1-b0))
 
 
+def _short_coverage(a0: float, a1: float, b0: float, b1: float) -> float:
+    """How much of the shorter interval is covered by the longer one."""
+    inter=max(0.0,min(a1,b1)-max(a0,b0))
+    return inter/max(1e-9,min(a1-a0,b1-b0))
+
+
 def select_orientation_families(tracks: list[core.FaceTrack], max_families: int=8) -> list[core.FaceTrack]:
     if not tracks:
         return []
     strength={}
     for t in tracks:
         k=core._orientation_key(t.theta_deg)
-        # Long, vertically persistent tracks dominate furniture-scale side lobes.
+        # Room-scale persistence, not local point density, determines orientation support.
         strength[k]=strength.get(k,0.0)+t.length*max(t.score,0.05)*max(t.EV,0.15)*max(t.continuity,0.20)
     ranked=sorted(strength.items(),key=lambda kv:kv[1],reverse=True)
     top=ranked[0][1]
     total=sum(v for _,v in ranked)
 
-    # If two dominant approximately orthogonal families already explain most support,
-    # use the room-level Manhattan explanation rather than retaining weak angular lobes.
+    # When two approximately orthogonal families explain most of a room, suppress
+    # weak angular side-lobes. Non-Manhattan scenes fall through to the general branch.
     if len(ranked)>=2:
         k0,s0=ranked[0]
         for k1,s1 in ranked[1:4]:
@@ -42,11 +50,8 @@ def select_orientation_families(tracks: list[core.FaceTrack], max_families: int=
                 keep={k0,k1}
                 return [t for t in tracks if core._orientation_key(t.theta_deg) in keep]
 
-    keep=[]
-    cumulative=0.0
+    keep=[]; cumulative=0.0
     for k,s in ranked:
-        # Non-Manhattan scenes may retain more families, but each must have meaningful
-        # room-scale support rather than merely being a local planar side-lobe.
         if keep and s<0.22*top and cumulative>=0.82*total:
             continue
         if s<0.12*top and len(keep)>=2:
@@ -62,8 +67,8 @@ def pair_faces_to_walls(tracks: list[core.FaceTrack], storey: base.Storey) -> li
     if not tracks:
         return []
 
-    # Estimate thickness only from pairs that cover most of one another.  A 1 m cabinet
-    # in front of a 6 m wall therefore cannot define wall thickness.
+    # Thickness can only be inferred from faces that cover most of one another.
+    # A short cabinet in front of a long wall cannot define masonry thickness.
     sep_samples=[]
     for i,a in enumerate(tracks):
         for b in tracks[i+1:]:
@@ -118,11 +123,63 @@ def suppress_parallel_duplicates(walls: list[base.Wall]) -> list[base.Wall]:
     return kept
 
 
-# Patch the v4 reconstruction graph at module scope.  This leaves candidate extraction,
-# fuzzy inference, opening reconstruction, IFC generation and diagnostics unchanged.
+_original_prune=core.prune_wall_graph
+
+
+def prune_wall_graph(walls: list[base.Wall]) -> list[base.Wall]:
+    """Topology pruning plus explicit rejection of parallel foreground furniture planes.
+
+    The manuscript notes that planar furniture can be aligned with permanent walls. A short,
+    vertically incomplete single face lying a few decimetres in front of a much longer,
+    stronger parallel wall is therefore negative architectural evidence, not a second wall.
+    """
+    walls=_original_prune(walls)
+    if len(walls)<2:
+        return walls
+
+    strength=lambda w: core._wall_length(w)*max(w.confidence,0.05)*max(w.resf_EV,0.15)
+    ordered=sorted(walls,key=strength,reverse=True)
+    kept=[]
+    for w in ordered:
+        Lw=core._wall_length(w)
+        _,_,dw,a0,a1=core._wall_axis(w)
+        shadow=False
+        for k in kept:
+            if w.storey_id!=k.storey_id or base._circular_distance(w.theta_deg,k.theta_deg)>3.0:
+                continue
+            Lk=core._wall_length(k)
+            if Lk<=Lw: continue
+            _,_,dk,b0,b1=core._wall_axis(k,w.theta_deg)
+            dd=abs(dw-dk)
+            covered=_short_coverage(a0,a1,b0,b1)
+            # Furniture/cabinet signature: short and vertically incomplete, almost
+            # contained along a stronger wall, within a typical furnishing depth.
+            if (0.08<=dd<=0.70 and covered>=0.72 and Lw<=0.58*Lk and
+                w.resf_EV<0.78 and w.source=="single_observed_face"):
+                shadow=True; break
+        if not shadow:
+            kept.append(w)
+
+    # A second conservative pass removes isolated sub-1.5 m single faces with weak
+    # vertical persistence. This threshold lies inside the manuscript sensitivity range.
+    final=[]
+    for i,w in enumerate(kept):
+        L=core._wall_length(w)
+        d0,d1=core._endpoint_degree(kept,i,0.32)
+        if (w.source=="single_observed_face" and L<1.50 and d0==0 and d1==0 and
+            w.resf_EV<0.72):
+            continue
+        final.append(w)
+    for i,w in enumerate(final,1): w.id=i
+    return final
+
+
+# Patch the v4 reconstruction graph at module scope. Candidate extraction, fuzzy inference,
+# opening reconstruction, IFC generation and diagnostics remain unchanged.
 core.select_orientation_families=select_orientation_families
 core.pair_faces_to_walls=pair_faces_to_walls
 core.suppress_parallel_duplicates=suppress_parallel_duplicates
+core.prune_wall_graph=prune_wall_graph
 
 
 def reconstruct_bim(request: dict) -> base.BIMModel:
@@ -130,4 +187,5 @@ def reconstruct_bim(request: dict) -> base.BIMModel:
     model.summary["version"]="4.1-paper-aligned-object-graph"
     model.summary["face_pairing"]="long-coverage-aware"
     model.summary["orientation_selection"]="room-scale-support-with-orthogonal-dominance"
+    model.summary["foreground_parallel_clutter_rejection"]=True
     return model
