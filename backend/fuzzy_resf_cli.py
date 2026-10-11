@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 
 from bim_reconstruction import write_csv, write_model_json
-from topology_completion import reconstruct_bim
+from paper_aligned_bim_v4 import reconstruct_bim
 from ifc_bim_export import write_bim_ifc
 
 
@@ -30,7 +30,7 @@ def main() -> int:
     try:
         model = reconstruct_bim(request)
         if not model.walls:
-            raise RuntimeError("No accepted BIM wall instances were reconstructed; IFC export aborted")
+            raise RuntimeError("No accepted physical BIM wall instances were reconstructed; IFC export aborted")
 
         walls_path = output_dir / "walls.csv"
         openings_path = output_dir / "openings.csv"
@@ -92,7 +92,7 @@ def main() -> int:
         summary = dict(model.summary)
         summary.update(
             {
-                "preset": request.get("preset", "Fuzzy-RESF-BIM 3.1"),
+                "preset": request.get("preset", "Fuzzy-RESF-BIM 4.0 (Paper-aligned object graph)"),
                 "walls_csv": str(walls_path),
                 "openings_csv": str(openings_path),
                 "spaces_csv": str(spaces_path),
@@ -110,7 +110,7 @@ def main() -> int:
         error = {
             "status": "error",
             "method": "Fuzzy-RESF-BIM",
-            "version": "3.1-topology-completion",
+            "version": "4.0-paper-aligned-object-graph",
             "error": f"{type(exc).__name__}: {exc}",
         }
         _write_summary(error, result_path)
