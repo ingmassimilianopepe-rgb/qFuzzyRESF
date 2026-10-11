@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 
 from bim_reconstruction import write_csv, write_model_json
-from architectural_graph_v5 import reconstruct_bim
+from architectural_graph_v5_1 import reconstruct_bim
 from ifc_bim_export import write_bim_ifc
 
 
@@ -74,7 +74,7 @@ def main() -> int:
 
         summary = dict(model.summary)
         summary.update({
-            "preset": request.get("preset", "Fuzzy-RESF-BIM 5.0 (Persistent architectural graph)"),
+            "preset": request.get("preset", "Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)"),
             "walls_csv": str(walls_path), "openings_csv": str(openings_path),
             "spaces_csv": str(spaces_path), "slabs_csv": str(slabs_path),
             "resf_candidates_csv": str(candidates_path), "bim_model_json": str(model_path),
@@ -86,7 +86,7 @@ def main() -> int:
         return 0
     except Exception as exc:
         error = {"status": "error", "method": "Fuzzy-RESF-BIM",
-                 "version": "5.0-persistent-architectural-graph",
+                 "version": "5.1-persistent-architectural-graph",
                  "error": f"{type(exc).__name__}: {exc}"}
         _write_summary(error, result_path)
         print(error["error"], file=sys.stderr)
