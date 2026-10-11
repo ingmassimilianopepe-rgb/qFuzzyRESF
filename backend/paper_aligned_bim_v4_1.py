@@ -1,10 +1,11 @@
 """Refinement layer for Fuzzy-RESF-BIM v4.1.
 
 This layer converts the manuscript RESF hypotheses into a physical architectural graph.
-It specifically rejects two non-BIM failure modes exposed by stress tests and real scans:
-short foreground planes parallel to a real wall, and extra interior planes that do not
-participate in a closed room graph. The manuscript RESF extraction and fuzzy evidence
-remain unchanged; the changes are confined to object reconstruction/consolidation.
+It rejects three non-BIM failure modes exposed by stress tests and real scans:
+short foreground planes parallel to a real wall, short angular side-lobes generated near
+corners/furniture, and extra interior planes that do not participate in a meaningful room
+graph. The manuscript RESF extraction and fuzzy evidence remain unchanged; these changes
+are confined to the downstream object reconstruction/consolidation stage.
 """
 
 from __future__ import annotations
@@ -25,6 +26,10 @@ def _coverage_overlap(a0: float, a1: float, b0: float, b1: float) -> float:
 def _short_coverage(a0: float, a1: float, b0: float, b1: float) -> float:
     inter=max(0.0,min(a1,b1)-max(a0,b0))
     return inter/max(1e-9,min(a1-a0,b1-b0))
+
+
+def _family_key(theta: float, step: float=10.0) -> float:
+    return round((theta % 180.0)/step)*step % 180.0
 
 
 def select_orientation_families(tracks: list[core.FaceTrack], max_families: int=8) -> list[core.FaceTrack]:
@@ -102,30 +107,49 @@ _original_prune=core.prune_wall_graph
 
 
 def _closed_graph_filter(walls: list[base.Wall]) -> list[base.Wall]:
-    """When closed rooms exist, retain the architectural cycle network.
+    """Prefer meaningful room cycles over small triangular/oblique support artefacts.
 
-    Any wall line forming the boundary of at least one polygonized room is retained. A
-    non-cycle line is retained only when it is a strong full-height partition connected at
-    both ends. This is the global 'which surfaces explain the room envelope?' decision that
-    a collection of independent accepted planes cannot provide.
+    A translated-plane detector can generate high-confidence diagonal side-lobes around a
+    corner or a piece of furniture.  Those lines can form tiny polygons when they intersect
+    true room walls, so merely asking whether a wall belongs to *any* cycle is insufficient.
+    We therefore define the architectural cycle set from polygons that are large relative to
+    the dominant room polygon.  Short genuine walls are still retained when they lie on a
+    meaningful room boundary; partitions outside that boundary need stronger global-family
+    support and must connect at both ends.
     """
     if len(walls)<4: return walls
     lines=[LineString([(w.x1,w.y1),(w.x2,w.y2)]) for w in walls]
     try:
-        polys=[p for p in polygonize(unary_union(lines)) if p.area>=0.8]
+        polys=[p for p in polygonize(unary_union(lines)) if p.area>=0.35]
     except Exception:
         return walls
     if not polys: return walls
-    boundary=unary_union([p.boundary for p in polys])
+
+    largest=max(p.area for p in polys)
+    area_cut=max(1.50,0.15*largest)
+    architectural=[p for p in polys if p.area>=area_cut]
+    if not architectural:
+        architectural=[max(polys,key=lambda p:p.area)]
+    boundary=unary_union([p.boundary for p in architectural])
+
+    family_strength={}
+    for w in walls:
+        k=_family_key(w.theta_deg)
+        family_strength[k]=family_strength.get(k,0.0)+core._wall_length(w)*max(w.confidence,0.1)
+    dominant=max(family_strength.values()) if family_strength else 1.0
+
     kept=[]
     for i,(w,line) in enumerate(zip(walls,lines)):
-        # Length of the wall lying on a room boundary (8 cm tolerance absorbs snapping noise).
         on_boundary=line.intersection(boundary.buffer(0.08)).length/max(line.length,1e-9)
         d0,d1=core._endpoint_degree(walls,i,0.34)
-        strong_partition=(d0>0 and d1>0 and w.resf_EV>=0.72 and w.confidence>=0.48 and line.length>=1.0)
+        fam=family_strength.get(_family_key(w.theta_deg),0.0)
+        strong_partition=(
+            d0>0 and d1>0 and line.length>=1.50 and
+            w.resf_EV>=0.72 and w.confidence>=0.48 and fam>=0.18*dominant
+        )
         if on_boundary>=0.60 or strong_partition:
             kept.append(w)
-    # Never replace a plausible graph by a tiny subset due to numerical polygonization.
+
     return kept if len(kept)>=4 else walls
 
 
@@ -143,8 +167,6 @@ def prune_wall_graph(walls: list[base.Wall]) -> list[base.Wall]:
             if Lk<=Lw: continue
             _,_,dk,b0,b1=core._wall_axis(k,w.theta_deg)
             dd=abs(dw-dk); covered=_short_coverage(a0,a1,b0,b1)
-            # Short, vertically incomplete plane close to a longer parallel wall =
-            # foreground furniture/clutter unless topology later proves otherwise.
             if 0.08<=dd<=0.70 and covered>=0.72 and Lw<=0.60*Lk and w.resf_EV<0.80:
                 shadow=True; break
         if not shadow: kept.append(w)
@@ -152,8 +174,7 @@ def prune_wall_graph(walls: list[base.Wall]) -> list[base.Wall]:
     prelim=[]
     for i,w in enumerate(kept):
         L=core._wall_length(w); d0,d1=core._endpoint_degree(kept,i,0.32)
-        if L<1.50 and d0==0 and d1==0 and w.resf_EV<0.74:
-            continue
+        if L<1.50 and d0==0 and d1==0 and w.resf_EV<0.74: continue
         prelim.append(w)
 
     final=_closed_graph_filter(prelim)
@@ -173,5 +194,5 @@ def reconstruct_bim(request: dict) -> base.BIMModel:
     model.summary["face_pairing"]="long-coverage-aware"
     model.summary["orientation_selection"]="room-scale-support-with-orthogonal-dominance"
     model.summary["foreground_parallel_clutter_rejection"]=True
-    model.summary["closed_room_graph_selection"]=True
+    model.summary["closed_room_graph_selection"]="dominant-area-cycle-aware"
     return model
