@@ -38,9 +38,15 @@ def make_room_cloud(path: Path) -> None:
         pts.append((rng.uniform(0, 6), rng.uniform(0, 4), rng.normal(0, 0.003)))
         pts.append((rng.uniform(0, 6), rng.uniform(0, 4), 2.8 + rng.normal(0, 0.003)))
 
-    # Interior clutter: deliberately short and low; it must not become a BIM wall.
-    for _ in range(1000):
+    # Interior clutter: short/low furniture-like plane.
+    for _ in range(1200):
         pts.append((rng.uniform(2.0, 3.0), 2.0 + rng.normal(0, 0.01), rng.uniform(0, 1.2)))
+
+    # Regression stress: repeated parallel cabinet/panel faces near a true wall.  A
+    # plane->solid exporter produces a comb of sheets here; the BIM object stage must not.
+    for y0 in (0.18, 0.24, 0.31, 0.39):
+        for _ in range(650):
+            pts.append((rng.uniform(0.6, 1.7), y0 + rng.normal(0, 0.005), rng.uniform(0.0, 1.65)))
 
     np.savetxt(path, np.asarray(pts), fmt="%.6f")
 
@@ -55,8 +61,8 @@ def test_cli_contract(tmp_path: Path):
 
     request = {
         "method": "Fuzzy-RESF-BIM",
-        "version": "3.1-topology-completion",
-        "preset": "Fuzzy-RESF-BIM 3.1 (Topology completion)",
+        "version": "4.0-paper-aligned-object-graph",
+        "preset": "Fuzzy-RESF-BIM 4.0 (Paper-aligned object graph)",
         "input": str(cloud),
         "output": str(out),
         "plane_spacing_m": 0.01,
@@ -88,24 +94,19 @@ def test_cli_contract(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
 
     for name in (
-        "result.json",
-        "bim_model.json",
-        "walls.csv",
-        "openings.csv",
-        "spaces.csv",
-        "slabs.csv",
-        "resf_candidates.csv",
-        "fuzzy_resf.ifc",
+        "result.json", "bim_model.json", "walls.csv", "openings.csv", "spaces.csv",
+        "slabs.csv", "resf_candidates.csv", "fuzzy_resf.ifc",
     ):
         assert (out / name).exists(), name
     assert (out / "fuzzy_resf.ifc").stat().st_size > 1024
 
     result = json.loads((out / "result.json").read_text(encoding="utf-8"))
     assert result["status"] == "success"
-    assert result["version"] == "3.1-topology-completion"
-    # A simple rectangular room should resolve to physical wall instances, not dozens
-    # of nearly coincident sheet-like plane hypotheses.
-    assert 4 <= result["walls"] <= 6
+    assert result["version"] == "4.0-paper-aligned-object-graph"
+    # A simple room must resolve to physical wall instances, never dozens of translated sheets.
+    assert 4 <= result["walls"] <= 6, result
+    assert result["wall_duplicate_pairs"] == 0, result
+    assert result["wall_junction_ratio"] >= 0.50, result
     assert result["spaces"] >= 1
     assert result["slabs"] >= 2
     assert result["doors"] >= 1
@@ -116,10 +117,7 @@ def test_cli_contract(tmp_path: Path):
     assert rows
     assert "state" in rows[0], "walls.csv must remain compatible with CloudCompare visualization"
     assert all(r["state"] in {"Permanent", "OccludedPermanent", "Uncertain", "Clutter"} for r in rows)
-    lengths = [
-        math.hypot(float(r["x2"]) - float(r["x1"]), float(r["y2"]) - float(r["y1"]))
-        for r in rows
-    ]
+    lengths = [math.hypot(float(r["x2"])-float(r["x1"]), float(r["y2"])-float(r["y1"])) for r in rows]
     assert min(lengths) >= 0.55
     assert max(lengths) <= 7.0, "building-wide sheet/plane regression detected"
 
@@ -133,15 +131,8 @@ def test_cli_contract(tmp_path: Path):
 
     ifc = (out / "fuzzy_resf.ifc").read_text(encoding="utf-8").upper()
     for token in (
-        "IFCBUILDINGSTOREY",
-        "IFCWALLSTANDARDCASE",
-        "IFCOPENINGELEMENT",
-        "IFCRELVOIDSELEMENT",
-        "IFCRELFILLSELEMENT",
-        "IFCDOOR",
-        "IFCWINDOW",
-        "IFCSLAB",
-        "IFCCOVERING",
-        "IFCSPACE",
+        "IFCBUILDINGSTOREY", "IFCWALLSTANDARDCASE", "IFCOPENINGELEMENT",
+        "IFCRELVOIDSELEMENT", "IFCRELFILLSELEMENT", "IFCDOOR", "IFCWINDOW",
+        "IFCSLAB", "IFCCOVERING", "IFCSPACE",
     ):
         assert token in ifc, token
