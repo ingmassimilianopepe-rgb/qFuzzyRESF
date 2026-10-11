@@ -9,35 +9,28 @@ import numpy as np
 
 
 def make_room_cloud(path: Path) -> None:
-    rng = np.random.default_rng(7)
-    pts = []
+    rng=np.random.default_rng(7); pts=[]
     for _ in range(12000):
-        x = rng.uniform(0.0, 6.0); z = rng.uniform(0.0, 2.8)
-        if not (2.55 <= x <= 3.45 and 0.0 <= z <= 2.1): pts.append((x, rng.normal(0, 0.004), z))
+        x=rng.uniform(0,6); z=rng.uniform(0,2.8)
+        if not (2.55<=x<=3.45 and z<=2.1): pts.append((x,rng.normal(0,0.004),z))
     for _ in range(12000):
-        x = rng.uniform(0.0, 6.0); z = rng.uniform(0.0, 2.8)
-        if not (1.8 <= x <= 3.2 and 0.9 <= z <= 2.0): pts.append((x, 4.0 + rng.normal(0, 0.004), z))
+        x=rng.uniform(0,6); z=rng.uniform(0,2.8)
+        if not (1.8<=x<=3.2 and 0.9<=z<=2.0): pts.append((x,4+rng.normal(0,0.004),z))
     for _ in range(8000):
-        y = rng.uniform(0.0, 4.0); z = rng.uniform(0.0, 2.8)
-        pts.append((rng.normal(0, 0.004), y, z)); pts.append((6.0 + rng.normal(0, 0.004), y, z))
+        y=rng.uniform(0,4); z=rng.uniform(0,2.8)
+        pts.append((rng.normal(0,0.004),y,z)); pts.append((6+rng.normal(0,0.004),y,z))
     for _ in range(5000):
-        pts.append((rng.uniform(0, 6), rng.uniform(0, 4), rng.normal(0, 0.003)))
-        pts.append((rng.uniform(0, 6), rng.uniform(0, 4), 2.8 + rng.normal(0, 0.003)))
-    for _ in range(1200): pts.append((rng.uniform(2.0, 3.0), 2.0 + rng.normal(0, 0.01), rng.uniform(0, 1.2)))
-    for y0 in (0.18, 0.24, 0.31, 0.39):
-        for _ in range(650): pts.append((rng.uniform(0.6, 1.7), y0 + rng.normal(0, 0.005), rng.uniform(0.0, 1.65)))
-    np.savetxt(path, np.asarray(pts), fmt="%.6f")
+        pts.append((rng.uniform(0,6),rng.uniform(0,4),rng.normal(0,0.003))); pts.append((rng.uniform(0,6),rng.uniform(0,4),2.8+rng.normal(0,0.003)))
+    for _ in range(1200): pts.append((rng.uniform(2,3),2+rng.normal(0,0.01),rng.uniform(0,1.2)))
+    for y0 in (0.18,0.24,0.31,0.39):
+        for _ in range(650): pts.append((rng.uniform(0.6,1.7),y0+rng.normal(0,0.005),rng.uniform(0,1.65)))
+    np.savetxt(path,np.asarray(pts),fmt="%.6f")
 
 
 def _wall_debug(rows):
     out=[]
     for r in rows:
-        out.append({
-            "id":r["id"],"xy":[round(float(r["x1"]),2),round(float(r["y1"]),2),round(float(r["x2"]),2),round(float(r["y2"]),2)],
-            "L":round(math.hypot(float(r["x2"])-float(r["x1"]),float(r["y2"])-float(r["y1"])),2),
-            "theta":round(float(r["theta_deg"]),1),"conf":round(float(r["confidence"]),2),
-            "EV":round(float(r["resf_EV"]),2),"source":r["source"],"state":r["state"]
-        })
+        out.append({"id":r["id"],"xy":[round(float(r["x1"]),2),round(float(r["y1"]),2),round(float(r["x2"]),2),round(float(r["y2"]),2)],"L":round(math.hypot(float(r["x2"])-float(r["x1"]),float(r["y2"])-float(r["y1"])),2),"theta":round(float(r["theta_deg"]),1),"conf":round(float(r["confidence"]),2),"EV":round(float(r["resf_EV"]),2),"source":r["source"],"state":r["state"]})
     return out
 
 
@@ -52,11 +45,14 @@ def test_cli_contract(tmp_path: Path):
     result=json.loads((out/"result.json").read_text(encoding="utf-8"))
     with (out/"walls.csv").open(newline="",encoding="utf-8") as f: rows=list(csv.DictReader(f))
     debug=_wall_debug(rows)
+    if not (4<=result["walls"]<=6):
+        print("BIM WALL REGRESSION SUMMARY",json.dumps(result,sort_keys=True))
+        for wall in debug: print("BIM WALL",json.dumps(wall,sort_keys=True))
     assert result["status"]=="success"
     assert result["version"]=="4.1-paper-aligned-object-graph"
-    assert 4<=result["walls"]<=6,{"summary":result,"walls":debug}
-    assert result["wall_duplicate_pairs"]==0,{"summary":result,"walls":debug}
-    assert result["wall_junction_ratio"]>=0.50,{"summary":result,"walls":debug}
+    assert 4<=result["walls"]<=6,result
+    assert result["wall_duplicate_pairs"]==0,result
+    assert result["wall_junction_ratio"]>=0.50,result
     assert result["spaces"]>=1 and result["slabs"]>=2
     assert result["doors"]>=1 and result["windows"]>=1
     assert rows and "state" in rows[0]
