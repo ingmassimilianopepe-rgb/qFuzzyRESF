@@ -28,6 +28,7 @@ jobs:
             backend/topology_completion.py \
             backend/paper_aligned_bim_v4.py \
             backend/architectural_graph_v5.py \
+            backend/architectural_graph_v5_1.py \
             backend/fuzzy_resf_cli.py \
             backend/ifc_bim_export.py
       - name: Run BIM regression suite
