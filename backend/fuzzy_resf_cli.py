@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 
 from bim_reconstruction import write_csv, write_model_json
-from paper_aligned_bim_v4 import reconstruct_bim
+from paper_aligned_bim_v4_1 import reconstruct_bim
 from ifc_bim_export import write_bim_ifc
 
 
@@ -40,39 +40,22 @@ def main() -> int:
         model_path = output_dir / "bim_model.json"
         ifc_path = output_dir / "fuzzy_resf.ifc"
 
-        write_csv(
-            model.walls,
-            walls_path,
-            [
-                "id", "storey_id", "x1", "y1", "x2", "y2", "z0", "z1", "thickness",
-                "theta_deg", "confidence", "support", "continuity", "source", "state",
-                "resf_A", "resf_EH", "resf_EV", "resf_C", "resf_N", "resf_O", "geometric_feedback",
-            ],
-        )
-        write_csv(
-            model.openings,
-            openings_path,
-            ["id", "wall_id", "storey_id", "kind", "offset", "width", "sill", "height", "confidence", "source"],
-        )
-        write_csv(
-            model.spaces,
-            spaces_path,
-            ["id", "storey_id", "name", "polygon", "z0", "z1", "area", "confidence"],
-        )
-        write_csv(
-            model.slabs,
-            slabs_path,
-            ["id", "storey_id", "kind", "polygon", "z", "thickness", "confidence"],
-        )
-        write_csv(
-            model.candidates,
-            candidates_path,
-            [
-                "id", "storey_id", "theta_deg", "d", "t0", "t1", "z0", "z1",
-                "A_star", "E_H", "E_V", "C", "N", "O", "rho", "semantic_wall",
-                "T_F", "T_C", "T_W", "T_B", "T_R", "T_CP", "G", "confidence", "state",
-            ],
-        )
+        write_csv(model.walls, walls_path, [
+            "id", "storey_id", "x1", "y1", "x2", "y2", "z0", "z1", "thickness",
+            "theta_deg", "confidence", "support", "continuity", "source", "state",
+            "resf_A", "resf_EH", "resf_EV", "resf_C", "resf_N", "resf_O", "geometric_feedback",
+        ])
+        write_csv(model.openings, openings_path,
+                  ["id", "wall_id", "storey_id", "kind", "offset", "width", "sill", "height", "confidence", "source"])
+        write_csv(model.spaces, spaces_path,
+                  ["id", "storey_id", "name", "polygon", "z0", "z1", "area", "confidence"])
+        write_csv(model.slabs, slabs_path,
+                  ["id", "storey_id", "kind", "polygon", "z", "thickness", "confidence"])
+        write_csv(model.candidates, candidates_path, [
+            "id", "storey_id", "theta_deg", "d", "t0", "t1", "z0", "z1",
+            "A_star", "E_H", "E_V", "C", "N", "O", "rho", "semantic_wall",
+            "T_F", "T_C", "T_W", "T_B", "T_R", "T_CP", "G", "confidence", "state",
+        ])
         write_model_json(model, model_path)
 
         if request.get("export_ifc", True):
@@ -90,29 +73,21 @@ def main() -> int:
                 raise RuntimeError("IFC validation failed: reconstructed spaces were not exported as IfcSpace")
 
         summary = dict(model.summary)
-        summary.update(
-            {
-                "preset": request.get("preset", "Fuzzy-RESF-BIM 4.0 (Paper-aligned object graph)"),
-                "walls_csv": str(walls_path),
-                "openings_csv": str(openings_path),
-                "spaces_csv": str(spaces_path),
-                "slabs_csv": str(slabs_path),
-                "resf_candidates_csv": str(candidates_path),
-                "bim_model_json": str(model_path),
-                "ifc": str(ifc_path) if request.get("export_ifc", True) else None,
-            }
-        )
+        summary.update({
+            "preset": request.get("preset", "Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)"),
+            "walls_csv": str(walls_path), "openings_csv": str(openings_path),
+            "spaces_csv": str(spaces_path), "slabs_csv": str(slabs_path),
+            "resf_candidates_csv": str(candidates_path), "bim_model_json": str(model_path),
+            "ifc": str(ifc_path) if request.get("export_ifc", True) else None,
+        })
         _write_summary(summary, result_path)
         for warning in summary.get("warnings", []):
             print(f"WARNING: {warning}", file=sys.stderr)
         return 0
     except Exception as exc:
-        error = {
-            "status": "error",
-            "method": "Fuzzy-RESF-BIM",
-            "version": "4.0-paper-aligned-object-graph",
-            "error": f"{type(exc).__name__}: {exc}",
-        }
+        error = {"status": "error", "method": "Fuzzy-RESF-BIM",
+                 "version": "4.1-paper-aligned-object-graph",
+                 "error": f"{type(exc).__name__}: {exc}"}
         _write_summary(error, result_path)
         print(error["error"], file=sys.stderr)
         return 2
