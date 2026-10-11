@@ -1,8 +1,7 @@
-"""IFC2X3 exporter for Fuzzy-RESF-BIM v6.
+"""IFC2X3 exporter for Fuzzy-RESF-BIM v6.1.
 
-Adds explicit sloped roof facets (IfcSlab.ROOF) as faceted BReps while preserving semantic
-walls, hosted openings, floor/ceiling slabs and spaces.  Runtime geometry is produced only
-from the current scan model; no reference IFC is read.
+Exports semantic walls/openings/spaces, explicit sloped roof facets and compact structural
+supports as IfcColumn. Runtime geometry comes only from the current scan model.
 """
 from __future__ import annotations
 
@@ -19,7 +18,7 @@ def _guid():
 
 def _q(s): return "'"+str(s).replace("'","''")+"'"
 
-def write_bim_ifc(model, path: str|Path, project_name: str="Fuzzy-RESF-BIM v6") -> None:
+def write_bim_ifc(model, path: str|Path, project_name: str="Fuzzy-RESF-BIM v6.1") -> None:
     path=Path(path)
     if not model.walls: raise ValueError("Refusing IFC export: BIM contains no walls")
     ent=[]; eid=1
@@ -84,6 +83,13 @@ def write_bim_ifc(model, path: str|Path, project_name: str="Fuzzy-RESF-BIM v6") 
         p1=add(f"IFCPROPERTYSINGLEVALUE('ObjectConfidence',$,IFCREAL({float(w.confidence):.6f}),$)"); p2=add(f"IFCPROPERTYSINGLEVALUE('ReconstructionSource',$,IFCLABEL({_q(w.source)}),$)"); p3=add(f"IFCPROPERTYSINGLEVALUE('ClassificationState',$,IFCLABEL({_q(getattr(w,'state','Permanent'))}),$)")
         ps=add(f"IFCPROPERTYSET({_q(_guid())},#{owner},'Pset_FuzzyRESF_BIM',$,(#{p1},#{p2},#{p3}))"); add(f"IFCRELDEFINESBYPROPERTIES({_q(_guid())},#{owner},$,$,(#{obj}),#{ps})")
 
+    for c in getattr(model,"columns",[]):
+        ang=math.radians(float(c.theta_deg)); tx,ty=math.cos(ang),math.sin(ang)
+        x=float(c.x)-0.5*float(c.width)*tx; y=float(c.y)-0.5*float(c.width)*ty
+        pl=placement(x,y,float(c.z0),tx,ty,storey_place.get(int(c.storey_id))); shape=rect_shape(float(c.width),float(c.depth),max(0.05,float(c.z1-c.z0)))
+        obj=add(f"IFCCOLUMN({_q(_guid())},#{owner},{_q('Column_'+str(c.id))},$,$,#{pl},#{shape},$)"); contained.setdefault(int(c.storey_id),[]).append(obj)
+        pc=add(f"IFCPROPERTYSINGLEVALUE('ObjectConfidence',$,IFCREAL({float(c.confidence):.6f}),$)"); ps=add(f"IFCPROPERTYSET({_q(_guid())},#{owner},'Pset_FuzzyRESF_Column',$,(#{pc}))"); add(f"IFCRELDEFINESBYPROPERTIES({_q(_guid())},#{owner},$,$,(#{obj}),#{ps})")
+
     for o in model.openings:
         w=wall_by.get(int(o.wall_id)); host=wall_ifc.get(int(o.wall_id))
         if w is None or host is None: continue
@@ -117,5 +123,5 @@ def write_bim_ifc(model, path: str|Path, project_name: str="Fuzzy-RESF-BIM v6") 
         st=storey_ifc.get(sid)
         if st and objs: add(f"IFCRELCONTAINEDINSPATIALSTRUCTURE({_q(_guid())},#{owner},$,$,({','.join('#'+str(o) for o in objs)}),#{st})")
 
-    text="ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('fuzzy_resf.ifc','',$,$,'qFuzzyRESF','Fuzzy-RESF-BIM v6','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n"+"\n".join(ent)+"\nENDSEC;\nEND-ISO-10303-21;\n"
+    text="ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');\nFILE_NAME('fuzzy_resf.ifc','',$,$,'qFuzzyRESF','Fuzzy-RESF-BIM v6.1','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n"+"\n".join(ent)+"\nENDSEC;\nEND-ISO-10303-21;\n"
     path.write_text(text,encoding="utf-8")
