@@ -16,17 +16,16 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle(tr("Fuzzy-RESF Scan-to-BIM"));
-    resize(640, 720);
+    resize(660, 735);
 
     auto* root = new QVBoxLayout(this);
 
     auto* intro = new QLabel(
-        tr("Fuzzy-RESF-BIM 5.1 reconstructs a physical architectural graph instead of exporting accepted RESF planes as wall sheets.\n"
-           "RESF and fuzzy inference remain the evidence layer; wall geometry is derived from height-persistent planimetric support, "
-           "clustered room-scale orientations, paired wall faces, collinear completion and a global room graph. This specifically targets "
-           "the comb-like parallel-sheet and angular side-lobe failures observed on real LAS scans. Doors/windows are reconstructed as "
-           "host-wall objects when their evidence is sufficient.\n"
-           "Older presets are retained for regression comparison."),
+        tr("Fuzzy-RESF-BIM 6.0 automatically distinguishes indoor room scans from complete exterior/historic building scans.\n"
+           "For exterior scenes it reconstructs one closed facade envelope from vertically persistent wall evidence, preserves local "
+           "non-Manhattan geometry, adds only strong interior partitions, estimates local wall heights, detects hosted openings and fits "
+           "multiple sloped roof facets from the upper envelope. RESF/fuzzy inference remains an evidence layer and no reference IFC is "
+           "read at runtime. Indoor scans delegate to the validated v5.1 persistent architectural graph."),
         this);
     intro->setWordWrap(true);
     root->addWidget(intro);
@@ -34,7 +33,8 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* executionBox = new QGroupBox(tr("Execution"), this);
     auto* executionForm = new QFormLayout(executionBox);
     m_preset = new QComboBox(executionBox);
-    m_preset->addItems({"Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)",
+    m_preset->addItems({"Fuzzy-RESF-BIM 6.0 (Adaptive building envelope)",
+                        "Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)",
                         "Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)",
                         "Fuzzy-RESF-BIM 3.1 (Topology completion)",
                         "Fuzzy-RESF",
@@ -43,7 +43,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
                         "RESF-Multi + Topology",
                         "RESF-Multi + Topology + HardRules",
                         "Fuzzy-RESF + Semantic evidence"});
-    m_preset->setCurrentText("Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)");
+    m_preset->setCurrentText("Fuzzy-RESF-BIM 6.0 (Adaptive building envelope)");
     m_python = new QLineEdit("python", executionBox);
     executionForm->addRow(tr("Preset"), m_preset);
     executionForm->addRow(tr("Python executable"), m_python);
@@ -68,7 +68,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* reasoningBox = new QGroupBox(tr("Reasoning and object reconstruction"), this);
     auto* reasoningLayout = new QVBoxLayout(reasoningBox);
     m_multiPeak = new QCheckBox(tr("Multi-peak RESF"), reasoningBox);
-    m_topology = new QCheckBox(tr("Topology / room graph + wall continuity"), reasoningBox);
+    m_topology = new QCheckBox(tr("Topology / room + facade graph continuity"), reasoningBox);
     m_occlusion = new QCheckBox(tr("Occlusion reasoning"), reasoningBox);
     m_fuzzy = new QCheckBox(tr("Fuzzy evidence fusion"), reasoningBox);
     m_instance = new QCheckBox(tr("Physical BIM wall/object consolidation"), reasoningBox);
@@ -79,7 +79,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
 
     auto* outputBox = new QGroupBox(tr("Output"), this);
     auto* outputLayout = new QVBoxLayout(outputBox);
-    m_exportIFC = new QCheckBox(tr("Export semantic IFC"), outputBox);
+    m_exportIFC = new QCheckBox(tr("Export semantic IFC (walls/openings/floors/sloped roof facets)"), outputBox);
     m_exportDiagnostics = new QCheckBox(tr("Export CSV/JSON diagnostics"), outputBox);
     m_exportIFC->setChecked(true);
     m_exportDiagnostics->setChecked(true);
@@ -88,8 +88,8 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     root->addWidget(outputBox);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, this, &FuzzyRESFDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &FuzzyRESFDialog::reject);
     root->addWidget(buttons);
 
     connect(m_preset, &QComboBox::currentTextChanged, this, &FuzzyRESFDialog::applyPreset);
@@ -98,10 +98,11 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
 
 void FuzzyRESFDialog::applyPreset(const QString& preset)
 {
+    const bool isBimV60 = preset == "Fuzzy-RESF-BIM 6.0 (Adaptive building envelope)";
     const bool isBimV51 = preset == "Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)";
     const bool isBimV41 = preset == "Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)";
     const bool isBimV31 = preset == "Fuzzy-RESF-BIM 3.1 (Topology completion)";
-    const bool isBim = isBimV51 || isBimV41 || isBimV31;
+    const bool isBim = isBimV60 || isBimV51 || isBimV41 || isBimV31;
     const bool isMax = preset == "RESF-Max";
     const bool isMulti = !isMax;
     const bool hasTopology = isBim || preset.contains("Topology") || preset.startsWith("Fuzzy-RESF");
@@ -115,8 +116,8 @@ void FuzzyRESFDialog::applyPreset(const QString& preset)
     m_instance->setChecked(isBim || isFuzzy || isHardRules);
     m_feedback->setChecked(isBim || isFuzzy);
 
-    // Preserve the frozen manuscript RESF sampling settings. v5.1 changes the physical
-    // object-reconstruction stage, not the centimetre plane sweep or fuzzy threshold.
+    // Preserve the manuscript RESF sampling settings. v6 changes scene interpretation,
+    // physical object reconstruction and roof modelling, not the baseline RESF sweep.
     if (isBim)
     {
         m_planeSpacing->setValue(0.01);
