@@ -1,0 +1,56 @@
+{
+  "policy": {
+    "name": "standards-aware soft object priors",
+    "geometry_rule": "Never invent, resize, move or delete scan geometry solely to satisfy a standard. Standards may contribute metadata, plausibility and compliance flags; measured geometry and Fuzzy-RESF evidence remain primary.",
+    "copyright_rule": "Only public bibliographic metadata and publicly available legal dimensions are encoded. No proprietary standard clauses or tables are reproduced.",
+    "certification": false
+  },
+  "information_standards": [
+    {"ref": "ISO 16739-1:2024", "role": "IFC information schema reference", "hard_geometry": false},
+    {"ref": "ISO 16354:2013", "role": "knowledge/object-library organization", "hard_geometry": false},
+    {"ref": "ISO 23387:2025", "role": "data-template structure for objects", "hard_geometry": false},
+    {"ref": "ISO 23386:2020", "role": "property definition and data dictionaries", "hard_geometry": false},
+    {"ref": "ISO 12006-2:2015", "role": "classification framework", "hard_geometry": false},
+    {"ref": "ISO 12006-3:2022", "role": "object-oriented information/dictionary framework", "hard_geometry": false}
+  ],
+  "accessibility": {
+    "ref": "D.M. 236/1989, 8.1.1",
+    "door_access_min_clear_width_m": 0.80,
+    "other_door_min_clear_width_m": 0.75,
+    "handle_height_m": [0.85, 0.95],
+    "preferred_max_single_leaf_width_m": 1.20,
+    "use": "one-sided compliance/plausibility flag only; detected wall-opening width is not assumed equal to certified clear passage width"
+  },
+  "product_and_component_standards": [
+    {"ref": "UNI EN 14351-1:2016", "classes": ["external_window", "external_pedestrian_door"], "role": "product/performance context", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 14351-2:2018", "classes": ["internal_window", "internal_pedestrian_door"], "role": "product/performance context", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 16034:2014", "classes": ["fire_smoke_door", "fire_smoke_window"], "role": "fire/smoke product-performance context", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 13830:2022", "classes": ["curtain_wall"], "role": "curtain-wall product context", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 13964:2014", "classes": ["suspended_ceiling"], "role": "ceiling product context", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 527-1:2011", "classes": ["office_desk_table"], "role": "future clutter/object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 1335-1:2022", "classes": ["office_chair"], "role": "future clutter/object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 1729-1:2016", "classes": ["school_furniture"], "role": "future clutter/object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 14749:2022", "classes": ["domestic_storage_furniture"], "role": "future clutter/object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 16121:2024", "classes": ["non_domestic_storage_furniture"], "role": "future clutter/object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 12520:2024", "classes": ["domestic_seating"], "role": "future clutter/object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 12521:2024", "classes": ["domestic_tables"], "role": "future clutter/object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 16139:2025", "classes": ["non_domestic_seating"], "role": "future clutter/object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 1116:2018", "classes": ["kitchen_furniture_appliance_sink"], "role": "future object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 997:2018", "classes": ["wc_pan"], "role": "future sanitary-object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 14688:2018", "classes": ["wash_basin"], "role": "future sanitary-object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 14516:2019", "classes": ["bath"], "role": "future sanitary-object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 14527:2019", "classes": ["shower_tray"], "role": "future sanitary-object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 14428:2018", "classes": ["shower_enclosure"], "role": "future sanitary-object prior", "numeric_geometry_priors_embedded": false},
+    {"ref": "UNI EN 12056-2:2001", "classes": ["gravity_drainage"], "role": "future system/context prior", "numeric_geometry_priors_embedded": false}
+  ],
+  "scan_derived_abacus": {
+    "enabled": true,
+    "description": "Repeated door/window dimensions are clustered inside the current building. Type modes are inferred from the scan itself and used as a soft consistency term, never as an external reference BIM.",
+    "min_cluster_size": 2,
+    "max_width_difference_m": 0.16,
+    "max_height_difference_m": 0.18,
+    "max_sill_difference_m": 0.18,
+    "geometry_blend": 0.20,
+    "geometry_blend_condition": "cluster_size>=3 and measured dimension is within 0.10 m of the cluster median"
+  }
+}
