@@ -15,7 +15,8 @@ from building_shell_v6_2 import reconstruct_bim as reconstruct_v62
 from building_shell_v6_3 import reconstruct_bim as reconstruct_v63
 from building_shell_v6_4 import reconstruct_bim as reconstruct_v64
 from building_shell_v6_5 import reconstruct_bim as reconstruct_v65
-from ifc_bim_export_v6_5 import write_bim_ifc
+from building_shell_v7 import reconstruct_bim as reconstruct_v70
+from ifc_bim_export_v7 import write_bim_ifc
 
 
 def _write_summary(summary: dict, path: Path) -> None:
@@ -37,7 +38,9 @@ def _select_reconstructor(request: dict):
         return reconstruct_v63
     if "6.4" in preset or version.startswith("6.4"):
         return reconstruct_v64
-    return reconstruct_v65
+    if "6.5" in preset or version.startswith("6.5"):
+        return reconstruct_v65
+    return reconstruct_v70
 
 
 def main() -> int:
@@ -65,6 +68,8 @@ def main() -> int:
         stairs_path = output_dir / "stairs.csv"
         candidates_path = output_dir / "resf_candidates.csv"
         model_path = output_dir / "bim_model.json"
+        abacus_path = output_dir / "object_abacus.json"
+        standards_path = output_dir / "standards_alignment.json"
         ifc_path = output_dir / "fuzzy_resf.ifc"
 
         write_csv(model.walls, walls_path, [
@@ -92,14 +97,23 @@ def main() -> int:
             "A_star", "E_H", "E_V", "C", "N", "O", "rho", "semantic_wall",
             "T_F", "T_C", "T_W", "T_B", "T_R", "T_CP", "G", "confidence", "state",
         ])
+
         write_model_json(model, model_path)
-        if roofs or columns or stairs:
-            payload = json.loads(model_path.read_text(encoding="utf-8"))
-            from dataclasses import asdict
+        payload = json.loads(model_path.read_text(encoding="utf-8"))
+        from dataclasses import asdict
+        if roofs:
             payload["roofs"] = [asdict(x) for x in roofs]
+        if columns:
             payload["columns"] = [asdict(x) for x in columns]
+        if stairs:
             payload["stairs"] = [asdict(x) for x in stairs]
-            model_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        if hasattr(model, "object_abacus"):
+            payload["object_abacus"] = model.object_abacus
+            abacus_path.write_text(json.dumps(model.object_abacus, indent=2), encoding="utf-8")
+        if hasattr(model, "standards_alignment"):
+            payload["standards_alignment"] = model.standards_alignment
+            standards_path.write_text(json.dumps(model.standards_alignment, indent=2), encoding="utf-8")
+        model_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
         if request.get("export_ifc", True):
             write_bim_ifc(model, ifc_path)
@@ -120,14 +134,18 @@ def main() -> int:
                 raise RuntimeError("IFC validation failed: reconstructed structural columns are missing from the IFC")
             if stairs and "IFCSTAIRFLIGHT" not in text:
                 raise RuntimeError("IFC validation failed: reconstructed stairs are missing as IfcStairFlight")
+            if hasattr(model, "standards_alignment") and "PSET_FUZZYRESF_V7_METHOD" not in text:
+                raise RuntimeError("IFC validation failed: v7 method/standards metadata was not exported")
 
         summary = dict(model.summary)
         summary.update({
-            "preset": request.get("preset", "Fuzzy-RESF-BIM 6.5 (Evidence graph + supported roof + stairs)"),
+            "preset": request.get("preset", "Fuzzy-RESF-BIM 7.0 (Paper core + object abacus)"),
             "walls_csv": str(walls_path), "openings_csv": str(openings_path),
             "spaces_csv": str(spaces_path), "slabs_csv": str(slabs_path), "roofs_csv": str(roofs_path),
             "columns_csv": str(columns_path), "stairs_csv": str(stairs_path),
             "resf_candidates_csv": str(candidates_path), "bim_model_json": str(model_path),
+            "object_abacus_json": str(abacus_path) if abacus_path.exists() else None,
+            "standards_alignment_json": str(standards_path) if standards_path.exists() else None,
             "ifc": str(ifc_path) if request.get("export_ifc", True) else None,
         })
         _write_summary(summary, result_path)
@@ -136,7 +154,7 @@ def main() -> int:
         return 0
     except Exception as exc:
         error = {"status": "error", "method": "Fuzzy-RESF-BIM",
-                 "version": "6.5-evidence-graph-preserving",
+                 "version": "7.0-paper-core-object-knowledge",
                  "error": f"{type(exc).__name__}: {exc}"}
         _write_summary(error, result_path)
         print(error["error"], file=sys.stderr)
