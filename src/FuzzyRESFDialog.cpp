@@ -16,13 +16,13 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle(tr("Fuzzy-RESF Scan-to-BIM"));
-    resize(710, 790);
+    resize(710, 800);
 
     auto* root = new QVBoxLayout(this);
 
     auto* intro = new QLabel(
-        tr("Fuzzy-RESF-BIM 6.4 regularizes the physical architectural primitives after the RESF/fuzzy evidence stage. It targets the residual real-scan defects visible in v6.3: zig-zag wall/roof edges, incomplete room subdivision, and missing entrance/porch stairs.\n"
-           "Facade runs are fitted to scan-supported local line families with micro-corner suppression; rooms are recovered as free-space cells separated by validated wall solids; roof patches are merged only when coplanar and spatially connected, then their boundaries are regularized; repeated rising horizontal tread sequences are reconstructed as semantic stair flights. "
+        tr("Fuzzy-RESF-BIM 6.5 preserves the intermediate RESF wall-evidence graph instead of rebuilding the BIM from a coarse hull. It was introduced after a real historic-building regression in v6.4.\n"
+           "Exterior and interior wall axes are regularized conservatively from the scan-supported graph; rooms are polygonized from exactly the wall graph exported to IFC; roof facets must remain connected to observed upper-envelope support; oversized facade vacancies are rejected before they can become false windows or doors; and stair detection is repeated in overlapping vertical bands so entrance stairs below the storey datum can be recovered. "
            "Runtime reconstruction remains reference-BIM free; older presets are retained for scientific ablation."),
         this);
     intro->setWordWrap(true);
@@ -31,7 +31,8 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* executionBox = new QGroupBox(tr("Execution"), this);
     auto* executionForm = new QFormLayout(executionBox);
     m_preset = new QComboBox(executionBox);
-    m_preset->addItems({"Fuzzy-RESF-BIM 6.4 (Architectural primitives + stairs)",
+    m_preset->addItems({"Fuzzy-RESF-BIM 6.5 (Evidence graph + supported roof + stairs)",
+                        "Fuzzy-RESF-BIM 6.4 (Architectural primitives + stairs)",
                         "Fuzzy-RESF-BIM 6.3 (Room + roof + wall regularization)",
                         "Fuzzy-RESF-BIM 6.2 (Component-aware historic building envelope)",
                         "Fuzzy-RESF-BIM 6.1 (Robust historic building envelope)",
@@ -45,7 +46,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
                         "RESF-Multi + Topology",
                         "RESF-Multi + Topology + HardRules",
                         "Fuzzy-RESF + Semantic evidence"});
-    m_preset->setCurrentText("Fuzzy-RESF-BIM 6.4 (Architectural primitives + stairs)");
+    m_preset->setCurrentText("Fuzzy-RESF-BIM 6.5 (Evidence graph + supported roof + stairs)");
     m_python = new QLineEdit("python", executionBox);
     executionForm->addRow(tr("Preset"), m_preset);
     executionForm->addRow(tr("Python executable"), m_python);
@@ -100,6 +101,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
 
 void FuzzyRESFDialog::applyPreset(const QString& preset)
 {
+    const bool isBimV65 = preset == "Fuzzy-RESF-BIM 6.5 (Evidence graph + supported roof + stairs)";
     const bool isBimV64 = preset == "Fuzzy-RESF-BIM 6.4 (Architectural primitives + stairs)";
     const bool isBimV63 = preset == "Fuzzy-RESF-BIM 6.3 (Room + roof + wall regularization)";
     const bool isBimV62 = preset == "Fuzzy-RESF-BIM 6.2 (Component-aware historic building envelope)";
@@ -108,7 +110,7 @@ void FuzzyRESFDialog::applyPreset(const QString& preset)
     const bool isBimV51 = preset == "Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)";
     const bool isBimV41 = preset == "Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)";
     const bool isBimV31 = preset == "Fuzzy-RESF-BIM 3.1 (Topology completion)";
-    const bool isBim = isBimV64 || isBimV63 || isBimV62 || isBimV61 || isBimV60 || isBimV51 || isBimV41 || isBimV31;
+    const bool isBim = isBimV65 || isBimV64 || isBimV63 || isBimV62 || isBimV61 || isBimV60 || isBimV51 || isBimV41 || isBimV31;
     const bool isMax = preset == "RESF-Max";
     const bool isMulti = !isMax;
     const bool hasTopology = isBim || preset.contains("Topology") || preset.startsWith("Fuzzy-RESF");
@@ -122,8 +124,8 @@ void FuzzyRESFDialog::applyPreset(const QString& preset)
     m_instance->setChecked(isBim || isFuzzy || isHardRules);
     m_feedback->setChecked(isBim || isFuzzy);
 
-    // Preserve the manuscript RESF sampling settings. v6.4 changes physical architectural
-    // reconstruction after evidence extraction, not the baseline RESF sweep.
+    // Preserve the manuscript RESF sampling settings. v6.5 changes only the
+    // physical graph/object reconstruction after evidence extraction.
     if (isBim)
     {
         m_planeSpacing->setValue(0.01);
