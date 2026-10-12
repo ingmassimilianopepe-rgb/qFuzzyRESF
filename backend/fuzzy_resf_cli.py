@@ -15,8 +15,11 @@ from building_shell_v6_2 import reconstruct_bim as reconstruct_v62
 from building_shell_v6_3 import reconstruct_bim as reconstruct_v63
 from building_shell_v6_4 import reconstruct_bim as reconstruct_v64
 from building_shell_v6_5 import reconstruct_bim as reconstruct_v65
+import building_shell_v7 as _v7_helpers
 from building_shell_v7 import reconstruct_bim as reconstruct_v70
-from building_shell_v7_1 import reconstruct_bim as reconstruct_v71
+import building_shell_v7_1 as _v71
+_v71.v7 = _v7_helpers
+reconstruct_v71 = _v71.reconstruct_bim
 from ifc_bim_export_v7 import write_bim_ifc
 
 
