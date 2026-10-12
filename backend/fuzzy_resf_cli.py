@@ -12,6 +12,7 @@ from architectural_graph_v5_1 import reconstruct_bim as reconstruct_v51
 from building_shell_v6 import reconstruct_bim as reconstruct_v6
 from building_shell_v6_1 import reconstruct_bim as reconstruct_v61
 from building_shell_v6_2 import reconstruct_bim as reconstruct_v62
+from building_shell_v6_3 import reconstruct_bim as reconstruct_v63
 from ifc_bim_export_v6 import write_bim_ifc
 
 
@@ -28,7 +29,9 @@ def _select_reconstructor(request: dict):
         return reconstruct_v6
     if "6.1" in preset or version.startswith("6.1"):
         return reconstruct_v61
-    return reconstruct_v62
+    if "6.2" in preset or version.startswith("6.2"):
+        return reconstruct_v62
+    return reconstruct_v63
 
 
 def main() -> int:
@@ -107,7 +110,7 @@ def main() -> int:
 
         summary = dict(model.summary)
         summary.update({
-            "preset": request.get("preset", "Fuzzy-RESF-BIM 6.2 (Component-aware historic building envelope)"),
+            "preset": request.get("preset", "Fuzzy-RESF-BIM 6.3 (Room + roof + wall regularization)"),
             "walls_csv": str(walls_path), "openings_csv": str(openings_path),
             "spaces_csv": str(spaces_path), "slabs_csv": str(slabs_path), "roofs_csv": str(roofs_path), "columns_csv": str(columns_path),
             "resf_candidates_csv": str(candidates_path), "bim_model_json": str(model_path),
@@ -119,7 +122,7 @@ def main() -> int:
         return 0
     except Exception as exc:
         error = {"status": "error", "method": "Fuzzy-RESF-BIM",
-                 "version": "6.2-component-aware-building-envelope",
+                 "version": "6.3-room-roof-wall-regularized",
                  "error": f"{type(exc).__name__}: {exc}"}
         _write_summary(error, result_path)
         print(error["error"], file=sys.stderr)
