@@ -16,6 +16,7 @@ from building_shell_v6_3 import reconstruct_bim as reconstruct_v63
 from building_shell_v6_4 import reconstruct_bim as reconstruct_v64
 from building_shell_v6_5 import reconstruct_bim as reconstruct_v65
 from building_shell_v7 import reconstruct_bim as reconstruct_v70
+from building_shell_v7_1 import reconstruct_bim as reconstruct_v71
 from ifc_bim_export_v7 import write_bim_ifc
 
 
@@ -40,7 +41,9 @@ def _select_reconstructor(request: dict):
         return reconstruct_v64
     if "6.5" in preset or version.startswith("6.5"):
         return reconstruct_v65
-    return reconstruct_v70
+    if "7.0" in preset or version.startswith("7.0"):
+        return reconstruct_v70
+    return reconstruct_v71
 
 
 def main() -> int:
@@ -60,6 +63,7 @@ def main() -> int:
             raise RuntimeError("No accepted physical BIM wall instances were reconstructed; IFC export aborted")
 
         walls_path = output_dir / "walls.csv"
+        uncertain_walls_path = output_dir / "uncertain_walls.csv"
         openings_path = output_dir / "openings.csv"
         spaces_path = output_dir / "spaces.csv"
         slabs_path = output_dir / "slabs.csv"
@@ -68,15 +72,19 @@ def main() -> int:
         stairs_path = output_dir / "stairs.csv"
         candidates_path = output_dir / "resf_candidates.csv"
         model_path = output_dir / "bim_model.json"
+        decisions_path = output_dir / "object_decisions.json"
         abacus_path = output_dir / "object_abacus.json"
         standards_path = output_dir / "standards_alignment.json"
         ifc_path = output_dir / "fuzzy_resf.ifc"
 
-        write_csv(model.walls, walls_path, [
+        wall_fields = [
             "id", "storey_id", "x1", "y1", "x2", "y2", "z0", "z1", "thickness",
             "theta_deg", "confidence", "support", "continuity", "source", "state",
             "resf_A", "resf_EH", "resf_EV", "resf_C", "resf_N", "resf_O", "geometric_feedback",
-        ])
+        ]
+        write_csv(model.walls, walls_path, wall_fields)
+        uncertain_walls = list(getattr(model, "uncertain_wall_hypotheses", []))
+        write_csv(uncertain_walls, uncertain_walls_path, wall_fields)
         write_csv(model.openings, openings_path,
                   ["id", "wall_id", "storey_id", "kind", "offset", "width", "sill", "height", "confidence", "source"])
         write_csv(model.spaces, spaces_path,
@@ -107,6 +115,11 @@ def main() -> int:
             payload["columns"] = [asdict(x) for x in columns]
         if stairs:
             payload["stairs"] = [asdict(x) for x in stairs]
+        if uncertain_walls:
+            payload["uncertain_wall_hypotheses"] = [asdict(x) for x in uncertain_walls]
+        if hasattr(model, "object_decisions"):
+            payload["object_decisions"] = model.object_decisions
+            decisions_path.write_text(json.dumps(model.object_decisions, indent=2), encoding="utf-8")
         if hasattr(model, "object_abacus"):
             payload["object_abacus"] = model.object_abacus
             abacus_path.write_text(json.dumps(model.object_abacus, indent=2), encoding="utf-8")
@@ -139,11 +152,14 @@ def main() -> int:
 
         summary = dict(model.summary)
         summary.update({
-            "preset": request.get("preset", "Fuzzy-RESF-BIM 7.0 (Paper core + object abacus)"),
-            "walls_csv": str(walls_path), "openings_csv": str(openings_path),
+            "preset": request.get("preset", "Fuzzy-RESF-BIM 7.1 (Evidence object hypotheses)"),
+            "walls_csv": str(walls_path),
+            "uncertain_walls_csv": str(uncertain_walls_path),
+            "openings_csv": str(openings_path),
             "spaces_csv": str(spaces_path), "slabs_csv": str(slabs_path), "roofs_csv": str(roofs_path),
             "columns_csv": str(columns_path), "stairs_csv": str(stairs_path),
             "resf_candidates_csv": str(candidates_path), "bim_model_json": str(model_path),
+            "object_decisions_json": str(decisions_path) if decisions_path.exists() else None,
             "object_abacus_json": str(abacus_path) if abacus_path.exists() else None,
             "standards_alignment_json": str(standards_path) if standards_path.exists() else None,
             "ifc": str(ifc_path) if request.get("export_ifc", True) else None,
@@ -154,7 +170,7 @@ def main() -> int:
         return 0
     except Exception as exc:
         error = {"status": "error", "method": "Fuzzy-RESF-BIM",
-                 "version": "7.0-paper-core-object-knowledge",
+                 "version": "7.1-evidence-object-hypotheses",
                  "error": f"{type(exc).__name__}: {exc}"}
         _write_summary(error, result_path)
         print(error["error"], file=sys.stderr)

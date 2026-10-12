@@ -1,10 +1,10 @@
-"""IFC2X3 compatibility exporter for Fuzzy-RESF-BIM v7.
+"""IFC2X3 compatibility exporter for Fuzzy-RESF-BIM v7.x.
 
-Geometry is exported with the validated v6.5 writer. v7 additionally attaches transparent
-object-knowledge metadata to the IFC project and detected doors/windows. This is not a
-claim of ISO 16739-1:2024 schema conformance: the portable release intentionally keeps
-IFC2X3 exchange compatibility, while recording the newer information standards as
-reference frameworks for object/data dictionaries.
+Geometry is exported with the validated v6.5 writer. v7.x additionally attaches transparent
+object-knowledge and decision-policy metadata to the IFC project and detected doors/windows.
+This is not a claim of ISO 16739-1:2024 schema conformance: the portable release intentionally
+keeps IFC2X3 exchange compatibility, while recording newer information standards as reference
+frameworks for object/data dictionaries.
 """
 from __future__ import annotations
 
@@ -29,6 +29,11 @@ def _q(s):
     return "'" + str(s).replace("'", "''") + "'"
 
 
+def _method_version(model) -> str:
+    v = str(getattr(model, "summary", {}).get("version", "7.x"))
+    return "Fuzzy-RESF-BIM " + ("7.1" if v.startswith("7.1") else ("7.0" if v.startswith("7.0") else v))
+
+
 def _inject_object_knowledge(path: Path, model) -> None:
     text = path.read_text(encoding="utf-8", errors="strict")
     ids = [int(x) for x in re.findall(r"#(\d+)=", text)]
@@ -47,11 +52,17 @@ def _inject_object_knowledge(path: Path, model) -> None:
         raise RuntimeError("Cannot inject v7 metadata: IFC owner/project not found")
     owner = int(owner_m.group(1)); project = int(project_m.group(1))
 
+    summary = getattr(model, "summary", {})
+    uncertain_count = int(summary.get("uncertain_wall_hypotheses", len(getattr(model, "uncertain_wall_hypotheses", []))))
+    decision_policy = str(summary.get("architectural_optimization", "evidence-driven object consolidation"))
     props = [
-        add("IFCPROPERTYSINGLEVALUE('MethodVersion',$,IFCLABEL('Fuzzy-RESF-BIM 7.0'),$)"),
+        add(f"IFCPROPERTYSINGLEVALUE('MethodVersion',$,IFCLABEL({_q(_method_version(model))}),$)"),
         add("IFCPROPERTYSINGLEVALUE('GeometryPolicy',$,IFCLABEL('Standards are soft priors only; scan evidence remains primary'),$)"),
         add("IFCPROPERTYSINGLEVALUE('InformationFramework',$,IFCLABEL('ISO 16739-1:2024; ISO 23387:2025; ISO 23386:2020; ISO 12006-2:2015; ISO 12006-3:2022; ISO 16354:2013'),$)"),
         add("IFCPROPERTYSINGLEVALUE('ExchangeSchemaNote',$,IFCLABEL('Portable compatibility file encoded as IFC2X3; no claim of ISO 16739-1:2024 schema conformance'),$)"),
+        add(f"IFCPROPERTYSINGLEVALUE('ObjectDecisionPolicy',$,IFCLABEL({_q(decision_policy)}),$)"),
+        add(f"IFCPROPERTYSINGLEVALUE('WithheldUncertainWalls',$,IFCINTEGER({uncertain_count}),$)"),
+        add("IFCPROPERTYSINGLEVALUE('ObservedInferredPolicy',$,IFCLABEL('Unsupported inferred hypotheses are withheld from strong IFC export and retained in diagnostics'),$)"),
     ]
     ps = add(f"IFCPROPERTYSET({_q(_guid())},#{owner},'Pset_FuzzyRESF_v7_Method',$,({','.join('#'+str(x) for x in props)}))")
     add(f"IFCRELDEFINESBYPROPERTIES({_q(_guid())},#{owner},$,$,(#{project}),#{ps})")
@@ -87,7 +98,7 @@ def _inject_object_knowledge(path: Path, model) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def write_bim_ifc(model, path: str | Path, project_name: str = "Fuzzy-RESF-BIM v7.0") -> None:
+def write_bim_ifc(model, path: str | Path, project_name: str = "Fuzzy-RESF-BIM v7.1") -> None:
     path = Path(path)
     _write_v65(model, path, project_name=project_name)
     _inject_object_knowledge(path, model)
