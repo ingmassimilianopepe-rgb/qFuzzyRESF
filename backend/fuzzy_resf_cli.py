@@ -13,7 +13,8 @@ from building_shell_v6 import reconstruct_bim as reconstruct_v6
 from building_shell_v6_1 import reconstruct_bim as reconstruct_v61
 from building_shell_v6_2 import reconstruct_bim as reconstruct_v62
 from building_shell_v6_3 import reconstruct_bim as reconstruct_v63
-from ifc_bim_export_v6 import write_bim_ifc
+from building_shell_v6_4 import reconstruct_bim as reconstruct_v64
+from ifc_bim_export_v6_4 import write_bim_ifc
 
 
 def _write_summary(summary: dict, path: Path) -> None:
@@ -31,7 +32,9 @@ def _select_reconstructor(request: dict):
         return reconstruct_v61
     if "6.2" in preset or version.startswith("6.2"):
         return reconstruct_v62
-    return reconstruct_v63
+    if "6.3" in preset or version.startswith("6.3"):
+        return reconstruct_v63
+    return reconstruct_v64
 
 
 def main() -> int:
@@ -56,6 +59,7 @@ def main() -> int:
         slabs_path = output_dir / "slabs.csv"
         roofs_path = output_dir / "roofs.csv"
         columns_path = output_dir / "columns.csv"
+        stairs_path = output_dir / "stairs.csv"
         candidates_path = output_dir / "resf_candidates.csv"
         model_path = output_dir / "bim_model.json"
         ifc_path = output_dir / "fuzzy_resf.ifc"
@@ -77,17 +81,21 @@ def main() -> int:
         columns = list(getattr(model, "columns", []))
         write_csv(columns, columns_path,
                   ["id", "storey_id", "x", "y", "z0", "z1", "width", "depth", "theta_deg", "confidence", "source"])
+        stairs = list(getattr(model, "stairs", []))
+        write_csv(stairs, stairs_path,
+                  ["id", "storey_id", "x", "y", "z", "width", "tread_depth", "riser_height", "step_count", "theta_deg", "confidence", "source"])
         write_csv(model.candidates, candidates_path, [
             "id", "storey_id", "theta_deg", "d", "t0", "t1", "z0", "z1",
             "A_star", "E_H", "E_V", "C", "N", "O", "rho", "semantic_wall",
             "T_F", "T_C", "T_W", "T_B", "T_R", "T_CP", "G", "confidence", "state",
         ])
         write_model_json(model, model_path)
-        if roofs or columns:
+        if roofs or columns or stairs:
             payload = json.loads(model_path.read_text(encoding="utf-8"))
             from dataclasses import asdict
             payload["roofs"] = [asdict(x) for x in roofs]
             payload["columns"] = [asdict(x) for x in columns]
+            payload["stairs"] = [asdict(x) for x in stairs]
             model_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
         if request.get("export_ifc", True):
@@ -107,12 +115,15 @@ def main() -> int:
                 raise RuntimeError("IFC validation failed: reconstructed roof facets are missing from the IFC")
             if columns and "IFCCOLUMN" not in text:
                 raise RuntimeError("IFC validation failed: reconstructed structural columns are missing from the IFC")
+            if stairs and "IFCSTAIRFLIGHT" not in text:
+                raise RuntimeError("IFC validation failed: reconstructed stairs are missing as IfcStairFlight")
 
         summary = dict(model.summary)
         summary.update({
-            "preset": request.get("preset", "Fuzzy-RESF-BIM 6.3 (Room + roof + wall regularization)"),
+            "preset": request.get("preset", "Fuzzy-RESF-BIM 6.4 (Architectural primitives + stairs)"),
             "walls_csv": str(walls_path), "openings_csv": str(openings_path),
-            "spaces_csv": str(spaces_path), "slabs_csv": str(slabs_path), "roofs_csv": str(roofs_path), "columns_csv": str(columns_path),
+            "spaces_csv": str(spaces_path), "slabs_csv": str(slabs_path), "roofs_csv": str(roofs_path),
+            "columns_csv": str(columns_path), "stairs_csv": str(stairs_path),
             "resf_candidates_csv": str(candidates_path), "bim_model_json": str(model_path),
             "ifc": str(ifc_path) if request.get("export_ifc", True) else None,
         })
@@ -122,7 +133,7 @@ def main() -> int:
         return 0
     except Exception as exc:
         error = {"status": "error", "method": "Fuzzy-RESF-BIM",
-                 "version": "6.3-room-roof-wall-regularized",
+                 "version": "6.4-architectural-primitives",
                  "error": f"{type(exc).__name__}: {exc}"}
         _write_summary(error, result_path)
         print(error["error"], file=sys.stderr)
