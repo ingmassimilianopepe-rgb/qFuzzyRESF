@@ -38,6 +38,7 @@ jobs:
             backend/object_knowledge_v7.py \
             backend/building_shell_v7.py \
             backend/building_shell_v7_1.py \
+            backend/building_shell_v7_2.py \
             backend/fuzzy_resf_cli.py \
             backend/ifc_bim_export.py \
             backend/ifc_bim_export_v6.py \
