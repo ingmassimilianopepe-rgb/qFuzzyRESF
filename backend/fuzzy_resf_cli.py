@@ -20,6 +20,7 @@ from building_shell_v7 import reconstruct_bim as reconstruct_v70
 import building_shell_v7_1 as _v71
 _v71.v7 = _v7_helpers
 reconstruct_v71 = _v71.reconstruct_bim
+from building_shell_v7_2 import reconstruct_bim as reconstruct_v72
 from ifc_bim_export_v7 import write_bim_ifc
 
 
@@ -46,7 +47,11 @@ def _select_reconstructor(request: dict):
         return reconstruct_v65
     if "7.0" in preset or version.startswith("7.0"):
         return reconstruct_v70
-    return reconstruct_v71
+    if "7.1" in preset or version.startswith("7.1"):
+        return reconstruct_v71
+    if "7.2" in preset or version.startswith("7.2"):
+        return reconstruct_v72
+    return reconstruct_v72
 
 
 def main() -> int:
@@ -78,6 +83,7 @@ def main() -> int:
         decisions_path = output_dir / "object_decisions.json"
         abacus_path = output_dir / "object_abacus.json"
         standards_path = output_dir / "standards_alignment.json"
+        restoration_path = output_dir / "restoration_policy.json"
         ifc_path = output_dir / "fuzzy_resf.ifc"
 
         wall_fields = [
@@ -129,6 +135,9 @@ def main() -> int:
         if hasattr(model, "standards_alignment"):
             payload["standards_alignment"] = model.standards_alignment
             standards_path.write_text(json.dumps(model.standards_alignment, indent=2), encoding="utf-8")
+        if hasattr(model, "restoration_policy"):
+            payload["restoration_policy"] = model.restoration_policy
+            restoration_path.write_text(json.dumps(model.restoration_policy, indent=2), encoding="utf-8")
         model_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
         if request.get("export_ifc", True):
@@ -155,7 +164,7 @@ def main() -> int:
 
         summary = dict(model.summary)
         summary.update({
-            "preset": request.get("preset", "Fuzzy-RESF-BIM 7.1 (Evidence object hypotheses)"),
+            "preset": request.get("preset", "Fuzzy-RESF-BIM 7.2 (Restored evidence graph)"),
             "walls_csv": str(walls_path),
             "uncertain_walls_csv": str(uncertain_walls_path),
             "openings_csv": str(openings_path),
@@ -165,6 +174,7 @@ def main() -> int:
             "object_decisions_json": str(decisions_path) if decisions_path.exists() else None,
             "object_abacus_json": str(abacus_path) if abacus_path.exists() else None,
             "standards_alignment_json": str(standards_path) if standards_path.exists() else None,
+            "restoration_policy_json": str(restoration_path) if restoration_path.exists() else None,
             "ifc": str(ifc_path) if request.get("export_ifc", True) else None,
         })
         _write_summary(summary, result_path)
@@ -173,7 +183,7 @@ def main() -> int:
         return 0
     except Exception as exc:
         error = {"status": "error", "method": "Fuzzy-RESF-BIM",
-                 "version": "7.1-evidence-object-hypotheses",
+                 "version": "7.2-restored-evidence-graph",
                  "error": f"{type(exc).__name__}: {exc}"}
         _write_summary(error, result_path)
         print(error["error"], file=sys.stderr)
