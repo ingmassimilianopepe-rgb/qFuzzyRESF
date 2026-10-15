@@ -3,9 +3,11 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QProcess>
 #include <QTextStream>
+#include <QtGlobal>
 
 #include <ccPointCloud.h>
 
@@ -18,6 +20,13 @@ FuzzyRESFRunner::Result FuzzyRESFRunner::run(ccPointCloud* cloud,
     if (!cloud)
     {
         result.errorMessage = "No input cloud was provided.";
+        return result;
+    }
+    const bool stepwise = p.preset == "Fuzzy-RESF-BIM 8.0 (Stepwise semantic)";
+    if (stepwise && qAbs(cloud->getGlobalScale() - 1.0) > 1.0e-12)
+    {
+        result.errorMessage = "The stepwise pipeline requires stored coordinates in metres and CloudCompare global scale 1.\n"
+                              "Normalize the cloud to metres with global scale 1, or use the backend CLI with an explicit scale_to_m.";
         return result;
     }
 
@@ -50,7 +59,7 @@ FuzzyRESFRunner::Result FuzzyRESFRunner::run(ccPointCloud* cloud,
 
     QJsonObject request;
     request["method"] = "Fuzzy-RESF-BIM";
-    request["version"] = "3.0-semantic-topological";
+    request["version"] = stepwise ? "8.0-stepwise" : "3.0-semantic-topological";
     request["preset"] = p.preset;
     request["input"] = xyzPath;
     request["output"] = result.outputDirectory;
@@ -69,6 +78,21 @@ FuzzyRESFRunner::Result FuzzyRESFRunner::run(ccPointCloud* cloud,
     request["geometric_feedback"] = p.geometricFeedback;
     request["export_ifc"] = p.exportIFC;
     request["export_diagnostics"] = p.exportDiagnostics;
+    if (stepwise)
+    {
+        // The importer consumes stored/local CloudCompare coordinates. Keep that
+        // frame unchanged; global shift/scale are metadata, not an extra transform.
+        request["coordinate_origin"] = QJsonArray{0.0, 0.0, 0.0};
+        request["scale_to_m"] = 1.0;
+        const CCVector3d& shift = cloud->getGlobalShift();
+        QJsonObject coordinates;
+        coordinates["global_shift"] = QJsonArray{shift.x, shift.y, shift.z};
+        coordinates["global_scale"] = cloud->getGlobalScale();
+        coordinates["input_frame"] = "cloudcompare_stored_local";
+        coordinates["assumed_units"] = "metres";
+        coordinates["up_axis"] = "Z";
+        request["cloudcompare_coordinates"] = coordinates;
+    }
 
     const QString requestPath = QDir(result.outputDirectory).filePath("request.json");
     QFile requestFile(requestPath);

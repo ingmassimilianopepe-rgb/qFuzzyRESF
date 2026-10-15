@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QMainWindow>
 #include <QMessageBox>
 #include <QSaveFile>
@@ -31,7 +32,7 @@ struct ValidatedIfc
     QString warning;
 };
 
-ValidatedIfc validateIfcForUserSave(const QString& ifcPath)
+ValidatedIfc validateIfcForUserSave(const QString& ifcPath, const QJsonObject& summary)
 {
     ValidatedIfc validated;
     const QFileInfo info(ifcPath);
@@ -71,15 +72,40 @@ ValidatedIfc validateIfcForUserSave(const QString& ifcPath)
         return validated;
     }
 
-    const QByteArray upper = validated.content.toUpper();
-    const bool hasWall = upper.contains("IFCWALL(") || upper.contains("IFCWALLSTANDARDCASE(");
-    if (!hasWall)
+    if (summary.value("version").toString().startsWith("8."))
     {
-        validated.content.clear();
-        validated.warning = QObject::tr("The IFC file was generated, but it contains no wall entities.\n"
-                                        "This usually means that Fuzzy-RESF did not reconstruct any walls.\n"
-                                        "The IFC will not be offered for saving.");
-        return validated;
+        // v8 validates the IFC schema and tessellated solid volumes in the backend.
+        // Valid floor-only or space-only results do not need an IfcWall entity.
+        QFile validationFile(summary.value("ifc_validation_json").toString());
+        QJsonObject validation;
+        if (validationFile.open(QIODevice::ReadOnly | QIODevice::Text))
+            validation = QJsonDocument::fromJson(validationFile.readAll()).object();
+        const QString reportedPath = summary.value("ifc").toString();
+        const bool backendValidated = summary.value("status").toString() == "success"
+            && !reportedPath.isEmpty()
+            && QFileInfo(reportedPath).absoluteFilePath() == info.absoluteFilePath()
+            && validation.value("schema_valid").toBool()
+            && validation.value("geometry_valid").toBool();
+        if (!backendValidated)
+        {
+            validated.content.clear();
+            validated.warning = QObject::tr("The stepwise backend did not report successful IFC schema and geometry validation.\n"
+                                            "The IFC will not be offered for saving.");
+            return validated;
+        }
+    }
+    else
+    {
+        const QByteArray upper = validated.content.toUpper();
+        const bool hasWall = upper.contains("IFCWALL(") || upper.contains("IFCWALLSTANDARDCASE(");
+        if (!hasWall)
+        {
+            validated.content.clear();
+            validated.warning = QObject::tr("The IFC file was generated, but it contains no wall entities.\n"
+                                            "This usually means that Fuzzy-RESF did not reconstruct any walls.\n"
+                                            "The IFC will not be offered for saving.");
+            return validated;
+        }
     }
 
     validated.ok = true;
@@ -136,6 +162,7 @@ public:
     bool process(ccCommandLineInterface& cmd) override
     {
         cmd.print("[Fuzzy-RESF] Starting command-line reconstruction");
+        cmd.print("[Fuzzy-RESF] Input coordinates must be in metres with Z vertical.");
 
         if (cmd.clouds().size() != 1)
         {
@@ -172,7 +199,7 @@ public:
 
         if (parameters.exportIFC)
         {
-            const auto validatedIfc = validateIfcForUserSave(result.ifcPath);
+            const auto validatedIfc = validateIfcForUserSave(result.ifcPath, result.summary);
             if (!validatedIfc.ok)
             {
                 cmd.print(QString("[Fuzzy-RESF][WARNING] %1").arg(validatedIfc.warning));
@@ -279,7 +306,7 @@ void qFuzzyRESF::doAction()
 
     if (parameters.exportIFC)
     {
-        const auto validatedIfc = validateIfcForUserSave(result.ifcPath);
+        const auto validatedIfc = validateIfcForUserSave(result.ifcPath, result.summary);
         if (!validatedIfc.ok)
         {
             QMessageBox::warning(m_app->getMainWindow(), tr("Fuzzy-RESF IFC warning"), validatedIfc.warning);

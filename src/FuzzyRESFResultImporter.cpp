@@ -94,6 +94,7 @@ bool FuzzyRESFResultImporter::importResults(const QString& outputDirectory,
     auto* uncertain = new ccHObject("Uncertain");
     auto* doors = new ccHObject("Doors");
     auto* windows = new ccHObject("Windows");
+    auto* openings = new ccHObject("Openings (unfilled)");
     wallsRoot->addChild(permanent);
     wallsRoot->addChild(occluded);
     wallsRoot->addChild(clutter);
@@ -101,6 +102,7 @@ bool FuzzyRESFResultImporter::importResults(const QString& outputDirectory,
     resultRoot->addChild(wallsRoot);
     resultRoot->addChild(doors);
     resultRoot->addChild(windows);
+    resultRoot->addChild(openings);
 
     QTextStream stream(&wallsFile);
     if (stream.atEnd())
@@ -123,7 +125,10 @@ bool FuzzyRESFResultImporter::importResults(const QString& outputDirectory,
     const int iconf = column("confidence");
     const int iid = column("id");
 
-    if (ix1 < 0 || iy1 < 0 || iz0 < 0 || ix2 < 0 || iy2 < 0 || iz1 < 0)
+    // The stepwise backend writes an id-only header for an empty object collection.
+    // Retain a result root and IFC metadata when only slabs/spaces were reconstructed.
+    const bool emptyWalls = header.size() == 1 && header.first().trimmed() == "id" && stream.atEnd();
+    if (!emptyWalls && (ix1 < 0 || iy1 < 0 || iz0 < 0 || ix2 < 0 || iy2 < 0 || iz1 < 0))
     {
         errorMessage = "walls.csv is missing required wall geometry columns (x1,y1,z0,x2,y2,z1).";
         delete resultRoot;
@@ -222,12 +227,14 @@ bool FuzzyRESFResultImporter::importResults(const QString& outputDirectory,
                     const QString id = oid >= 0 ? f[oid].trimmed() : QString::number(++openingIndex);
                     const double confidence = oconf >= 0 ? f[oconf].toDouble() : 0.0;
                     const bool isDoor = kind.compare("Door", Qt::CaseInsensitive) == 0;
-                    const QColor color = isDoor ? QColor(31, 119, 180) : QColor(148, 103, 189);
+                    const bool isWindow = kind.compare("Window", Qt::CaseInsensitive) == 0;
+                    const QColor color = isDoor ? QColor(31, 119, 180)
+                        : isWindow ? QColor(148, 103, 189) : QColor(23, 190, 207);
                     auto* poly = makeRectangle(
                         QString("%1_%2 [wall=%3, conf=%4]").arg(kind, id, wallId).arg(confidence, 0, 'f', 2),
                         CCVector3(xa, ya, za), CCVector3(xb, yb, za),
                         CCVector3(xb, yb, zb), CCVector3(xa, ya, zb), color, sourceCloud);
-                    (isDoor ? doors : windows)->addChild(poly);
+                    (isDoor ? doors : isWindow ? windows : openings)->addChild(poly);
                 }
             }
         }

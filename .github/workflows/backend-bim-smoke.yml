@@ -23,6 +23,7 @@ jobs:
           python -m pip install -r backend/requirements.txt pytest
       - name: Compile Python backend
         run: |
+          python -m py_compile backend/resf_*.py backend/semantic_*.py
           python -m py_compile \
             backend/bim_reconstruction.py \
             backend/topology_completion.py \

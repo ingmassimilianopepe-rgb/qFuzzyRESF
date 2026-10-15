@@ -21,8 +21,8 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* root = new QVBoxLayout(this);
 
     auto* intro = new QLabel(
-        tr("Fuzzy-RESF-BIM 7.2 restores the evidence-graph-preserving geometry that produced the preferred intermediate BIM before the v7 object-layer regressions.\n"
-           "The v6.5 scan-supported wall graph is again authoritative: walls are not re-promoted or re-merged by a second v7 pass, rooms remain derived from that same exported graph, and roof facets retain the connected upper-envelope support model. v7.0/v7.1 remain available only as explicit ablation presets."),
+        tr("Version 8 reconstructs walls, openings, floors, ceilings and spaces through inspectable RESF, fuzzy and geometry stages. Historical presets remain available.\n"
+           "Input coordinates must be in metres with Z vertical. Door/window classification requires independent evidence; semantic probabilities, scanner origins and family catalogues can be supplied through the backend CLI. The CloudCompare input alone does not establish that a missing patch is an opening."),
         this);
     intro->setWordWrap(true);
     root->addWidget(intro);
@@ -30,7 +30,8 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
     auto* executionBox = new QGroupBox(tr("Execution"), this);
     auto* executionForm = new QFormLayout(executionBox);
     m_preset = new QComboBox(executionBox);
-    m_preset->addItems({"Fuzzy-RESF-BIM 7.2 (Restored evidence graph)",
+    m_preset->addItems({"Fuzzy-RESF-BIM 8.0 (Stepwise semantic)",
+                        "Fuzzy-RESF-BIM 7.2 (Restored evidence graph)",
                         "Fuzzy-RESF-BIM 7.1 (Evidence object hypotheses)",
                         "Fuzzy-RESF-BIM 7.0 (Paper core + object abacus)",
                         "Fuzzy-RESF-BIM 6.5 (Evidence graph + supported roof + stairs)",
@@ -48,7 +49,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
                         "RESF-Multi + Topology",
                         "RESF-Multi + Topology + HardRules",
                         "Fuzzy-RESF + Semantic evidence"});
-    m_preset->setCurrentText("Fuzzy-RESF-BIM 7.2 (Restored evidence graph)");
+    m_preset->setCurrentText("Fuzzy-RESF-BIM 8.0 (Stepwise semantic)");
     m_python = new QLineEdit("python", executionBox);
     executionForm->addRow(tr("Preset"), m_preset);
     executionForm->addRow(tr("Python executable"), m_python);
@@ -84,8 +85,8 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
 
     auto* outputBox = new QGroupBox(tr("Output"), this);
     auto* outputLayout = new QVBoxLayout(outputBox);
-    m_exportIFC = new QCheckBox(tr("Export semantic IFC (walls/openings/floors/sloped roofs/columns/spaces/stairs)"), outputBox);
-    m_exportDiagnostics = new QCheckBox(tr("Export CSV/JSON diagnostics including RESF candidates and restoration policy"), outputBox);
+    m_exportIFC = new QCheckBox(tr("Export semantic IFC"), outputBox);
+    m_exportDiagnostics = new QCheckBox(tr("Export stage diagnostics and reconstruction decisions"), outputBox);
     m_exportIFC->setChecked(true);
     m_exportDiagnostics->setChecked(true);
     outputLayout->addWidget(m_exportIFC);
@@ -103,6 +104,7 @@ FuzzyRESFDialog::FuzzyRESFDialog(QWidget* parent)
 
 void FuzzyRESFDialog::applyPreset(const QString& preset)
 {
+    const bool isBimV80 = preset == "Fuzzy-RESF-BIM 8.0 (Stepwise semantic)";
     const bool isBimV72 = preset == "Fuzzy-RESF-BIM 7.2 (Restored evidence graph)";
     const bool isBimV71 = preset == "Fuzzy-RESF-BIM 7.1 (Evidence object hypotheses)";
     const bool isBimV70 = preset == "Fuzzy-RESF-BIM 7.0 (Paper core + object abacus)";
@@ -115,7 +117,7 @@ void FuzzyRESFDialog::applyPreset(const QString& preset)
     const bool isBimV51 = preset == "Fuzzy-RESF-BIM 5.1 (Persistent architectural graph)";
     const bool isBimV41 = preset == "Fuzzy-RESF-BIM 4.1 (Paper-aligned object graph)";
     const bool isBimV31 = preset == "Fuzzy-RESF-BIM 3.1 (Topology completion)";
-    const bool isBim = isBimV72 || isBimV71 || isBimV70 || isBimV65 || isBimV64 || isBimV63 || isBimV62 || isBimV61 || isBimV60 || isBimV51 || isBimV41 || isBimV31;
+    const bool isBim = isBimV80 || isBimV72 || isBimV71 || isBimV70 || isBimV65 || isBimV64 || isBimV63 || isBimV62 || isBimV61 || isBimV60 || isBimV51 || isBimV41 || isBimV31;
     const bool isMax = preset == "RESF-Max";
     const bool isMulti = !isMax;
     const bool hasTopology = isBim || preset.contains("Topology") || preset.startsWith("Fuzzy-RESF");
@@ -124,14 +126,36 @@ void FuzzyRESFDialog::applyPreset(const QString& preset)
 
     m_multiPeak->setChecked(isMulti);
     m_topology->setChecked(hasTopology);
-    m_occlusion->setChecked(hasTopology);
+    m_occlusion->setChecked(hasTopology && !isBimV80);
     m_fuzzy->setChecked(isFuzzy && !isHardRules);
     m_instance->setChecked(isBim || isFuzzy || isHardRules);
     m_feedback->setChecked(isBim || isFuzzy);
 
-    // Preserve the manuscript frozen RESF sampling/decision settings. v7.2 restores the
-    // proven v6.5 object graph and does not retune the paper core.
-    if (isBim)
+    // These stages define the v8 reconstruction contract. They are always recorded;
+    // no sensor-visibility inference is available from a bare XYZ cloud.
+    for (QCheckBox* cb : {m_topology, m_fuzzy, m_instance, m_feedback, m_exportDiagnostics})
+    {
+        cb->setEnabled(!isBimV80);
+        cb->setToolTip(isBimV80 ? tr("Required stage of the stepwise semantic pipeline.") : QString());
+    }
+    m_occlusion->setEnabled(!isBimV80);
+    m_occlusion->setToolTip(isBimV80
+        ? tr("Scanner origins are required. Supply them with the backend CLI to enable visibility evidence.")
+        : QString());
+    if (isBimV80)
+        m_exportDiagnostics->setChecked(true);
+
+    // Defaults are editable sampling parameters, not a frozen manuscript contract.
+    if (isBimV80)
+    {
+        m_planeSpacing->setValue(0.02);
+        m_planeTolerance->setValue(0.04);
+        m_rasterCell->setValue(0.10);
+        m_confidence->setValue(0.55);
+        m_angleStep->setValue(2.0);
+        m_maxOrientations->setValue(24);
+    }
+    else if (isBim)
     {
         m_planeSpacing->setValue(0.01);
         m_planeTolerance->setValue(0.03);

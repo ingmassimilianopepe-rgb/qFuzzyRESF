@@ -1,0 +1,8 @@
+{
+  "units": "m",
+  "note": "Example ranges only. Replace with surveyed/project families; these are soft priors, not semantic labels.",
+  "families": [
+    {"id": "D_EXAMPLE_01", "class": "Door", "width_m": [0.8, 1.1], "height_m": [2.0, 2.2], "sill_m": [0.0, 0.08]},
+    {"id": "W_EXAMPLE_01", "class": "Window", "width_m": [1.0, 1.4], "height_m": [1.0, 1.4], "sill_m": [0.8, 1.2]}
+  ]
+}

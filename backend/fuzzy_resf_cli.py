@@ -61,6 +61,9 @@ def main() -> int:
 
     request_path = Path(args.request)
     request = json.loads(request_path.read_text(encoding="utf-8"))
+    if str(request.get("version", "")).startswith("8.") or "8.0" in str(request.get("preset", "")):
+        from semantic_resf_cli import main as stepwise_main
+        return stepwise_main(["--request", str(request_path)])
     output_dir = Path(request["output"])
     output_dir.mkdir(parents=True, exist_ok=True)
     result_path = output_dir / "result.json"
