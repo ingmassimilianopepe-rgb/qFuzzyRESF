@@ -32,6 +32,8 @@ Il nuovo preset passa esplicitamente alla v8 attraverso `backend/fuzzy_resf_cli.
 
 Per vedere il nuovo preset occorre compilare/installare il plugin aggiornato: [istruzioni di build](docs/BUILD.md). Il [contratto storico del backend](docs/BACKEND_CONTRACT.md) resta disponibile; il contratto operativo della v8 è descritto nella nuova guida. L'interfaccia CloudCompare passa la nuvola selezionata; i dati ausiliari si forniscono tramite CLI.
 
+Il pacchetto Windows v8 assemblato contiene CloudCompare e il plugin compilati insieme. Dopo avere estratto tutto lo ZIP, eseguire `SETUP_QFUZZYRESF.cmd` (Python 3.10–3.12 x64 e Internet al primo setup) e poi `START_QFUZZYRESF.cmd`. `TEST_QFUZZYRESF.cmd` esegue una prova del plugin reale su una stanza sintetica. Gli script sono in `packaging/windows/`; `packaging/build_portable.py` assembla l'artefatto binario GitHub con questi helper e verifica il backend contro il commit di compilazione. Una DLL isolata richiede una versione CloudCompare compatibile: usare il programma incluso nel pacchetto.
+
 ## Requisiti
 
 - CloudCompare 2.14+, Qt 6 e CMake 3.20+ per il plugin nativo.

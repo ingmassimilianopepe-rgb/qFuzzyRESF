@@ -1,0 +1,48 @@
+qFuzzyRESF v8 - pacchetto per CloudCompare, Windows x64
+
+PRIMA INSTALLAZIONE
+1. Estrarre TUTTO lo ZIP in una cartella scrivibile, ad esempio
+   Documenti\qFuzzyRESF. Non avviare i file direttamente dentro lo ZIP.
+2. Installare Python 3.12 a 64 bit da https://www.python.org/downloads/windows/
+   se non e' gia' presente. Mantenere selezionato Python Launcher.
+   Sono supportati anche Python 3.10 e 3.11 a 64 bit.
+3. Fare doppio clic su SETUP_QFUZZYRESF.cmd. Il primo setup richiede Internet
+   per scaricare numpy, scipy, shapely e ifcopenshell da PyPI.
+   Viene creato un ambiente .venv isolato: nessuna installazione globale.
+   Il setup verifica dipendenze, libreria IFC e importazione del backend.
+4. Avviare SEMPRE START_QFUZZYRESF.cmd. Esso configura Python per CloudCompare.
+   I successivi avvii non richiedono Internet.
+
+TEST FACOLTATIVO
+Dopo il setup, TEST_QFUZZYRESF.cmd esegue la ricostruzione di una stanza
+sintetica attraverso il vero comando del plugin in CloudCompare. Controlla
+il completamento, gli oggetti attesi e le verifiche IFC. Richiede al massimo
+5 minuti. Log e risultati sono salvati in smoke-runs\<data-ora>.
+Il test usa solo XYZ: le aperture restano incerte senza evidenza semantica.
+
+UTILIZZO
+- Caricare la nuvola e selezionarla nell'albero degli oggetti.
+- Aprire Plugins > Fuzzy-RESF Scan-to-BIM e scegliere il preset v8.
+- Le coordinate devono essere in metri, l'asse Z verticale e la scala globale 1.
+- Avviare la ricostruzione. In CloudCompare vengono mostrati i contorni di muri
+  e aperture; il modello semantico completo e' nel file IFC. Alla fine scegliere
+  dove salvare l'IFC. Le evidenze intermedie rimangono nella cartella di output
+  indicata dalla console. Durante il calcolo la finestra puo' risultare occupata.
+- La sola assenza di punti non basta a stabilire una porta o una finestra.
+  Per probabilita' semantiche, origini scanner e abaco vedere la guida
+  docs\SEMANTIC_PIPELINE.md inclusa nel pacchetto, o il repository:
+  https://github.com/ingmassimilianopepe-rgb/qFuzzyRESF/tree/release/windows-v0.1
+
+PROBLEMI
+- Non copiare la DLL in un'altra versione di CloudCompare: usare l'applicazione
+  inclusa, costruita insieme al plugin con librerie compatibili.
+- Non sono necessari privilegi di amministratore. Evitare Program Files.
+- Se il setup fallisce, consultare logs\setup-*.log. La finestra resta aperta.
+- Se Python non viene trovato, indicarlo esplicitamente da PowerShell:
+  .\SETUP_QFUZZYRESF.ps1 -PythonExecutable "C:\percorso\python.exe"
+- Se si sposta il pacchetto e il runtime non funziona piu', rinominare .venv
+  e ripetere il setup. Non copiare ambienti Python da un altro computer.
+- L'ambiente e' rimovibile cancellando la cartella estratta del pacchetto.
+
+Il codice conserva casi incerti e assunzioni geometriche. I test sintetici
+non costituiscono una validazione di accuratezza su edifici reali.
