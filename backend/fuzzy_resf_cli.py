@@ -7,6 +7,10 @@ import json
 from pathlib import Path
 import sys
 
+if __name__ == "__main__":
+    from runtime_bootstrap import ensure_runtime
+    ensure_runtime(__file__)
+
 from bim_reconstruction import write_csv, write_model_json
 from architectural_graph_v5_1 import reconstruct_bim as reconstruct_v51
 from building_shell_v6 import reconstruct_bim as reconstruct_v6

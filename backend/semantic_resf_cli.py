@@ -4,9 +4,17 @@ import argparse
 import json
 from pathlib import Path
 import sys
-try:
+
+if __name__ == "__main__":
+    if __package__:
+        from .runtime_bootstrap import ensure_runtime
+    else:
+        from runtime_bootstrap import ensure_runtime
+    ensure_runtime(__file__)
+
+if __package__:
     from .semantic_pipeline import run_pipeline, STAGES
-except ImportError:
+else:
     from semantic_pipeline import run_pipeline, STAGES
 
 

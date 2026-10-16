@@ -1,0 +1,29 @@
+qFuzzyRESF v8 - correzione Python / No module named scipy
+
+CAUSA
+Il plugin poteva avviare il Python di sistema invece dell'ambiente .venv
+preparato dal setup. L'errore sull'importazione relativa era secondario:
+il messaggio finale era ModuleNotFoundError: No module named 'scipy'.
+
+INSTALLAZIONE DELLA CORREZIONE
+1. Chiudere CloudCompare.
+2. Estrarre tutto questo ZIP in una cartella qualsiasi.
+3. Fare doppio clic su RIPARA_QFUZZYRESF.cmd.
+   La cartella proposta e' C:\fuzzy, come nello screenshot. Se non viene
+   trovata, lo script chiede la cartella che contiene CloudCompare e SETUP.
+4. Attendere il messaggio CORREZIONE COMPLETATA. Il setup richiede Internet
+   se mancano dipendenze e Python 3.10-3.12 x64 installato nel computer.
+5. Avviare C:\fuzzy\START_QFUZZYRESF.cmd e ripetere la ricostruzione.
+
+Lo script conserva una copia dei file precedenti nella cartella
+backup-runtime-<data-ora>. Aggiorna solo backend e script di avvio/setup;
+non sostituisce CloudCompare.exe, le DLL, la nuvola o i risultati precedenti.
+
+La correzione rilancia automaticamente il backend con il Python della .venv.
+Se la .venv o una dipendenza manca, fornisce un messaggio esplicito indicando
+l'interprete effettivo e il comando SETUP da eseguire.
+
+VERIFICA MANUALE (PowerShell, per l'installazione C:\fuzzy)
+& 'C:\fuzzy\.venv\Scripts\python.exe' -c 'import sys, scipy; print(sys.executable); print(scipy.__version__)'
+
+E' inoltre disponibile TEST_QFUZZYRESF.cmd nella cartella di installazione.

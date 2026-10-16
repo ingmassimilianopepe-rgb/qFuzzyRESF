@@ -205,6 +205,8 @@ La selezione CloudCompare deve essere in metri, con verticale Z e scala globale 
 
 Le entità importate in CloudCompare sono visualizzazioni della ricostruzione; il file IFC e i JSON contengono relazioni e provenienza. La verifica completa richiede anche il confronto con la nuvola nel sistema di coordinate dichiarato.
 
+La correzione di avvio `runtime_bootstrap.py` seleziona esplicitamente la `.venv` del pacchetto prima di importare NumPy/SciPy. Questo evita che l'avvio diretto di CloudCompare usi un Python di sistema privo delle dipendenze installate dal setup. Se l'ambiente manca o è incompleto, il backend indica l'interprete effettivo e invita a eseguire `SETUP_QFUZZYRESF.cmd`; non installa pacchetti durante la ricostruzione. Per aggiornare il primo ZIP v8 è disponibile la correzione leggera in `packaging/repair/`.
+
 ## Come migliorare e validare il paper
 
 La bozza dovrebbe separare chiaramente estrazione di ipotesi, classificazione semantica, ricostruzione delle istanze, completamento delle parti nascoste e verifica dell'export. Questa implementazione rende la separazione operativa, ma non elimina l'ambiguità del dato.
