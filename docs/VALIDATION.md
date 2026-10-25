@@ -4,7 +4,7 @@
 
 Data: 25 ottobre 2026. Python 3.12, NumPy 2.3.5, SciPy 1.17.0, Shapely 2.2.0, scikit-image 0.25.2, IfcOpenShell 0.9.0.post1, trimesh 5.1.1.
 
-La suite iniziale di **10 test** passa. Il test principale costruisce una nuvola sintetica di due stanze adiacenti, comprese le superfici interne. Verifica l'intera pipeline fino a un IFC4 con **5 pareti e 2 spazi**, profili estrusi, nessun errore schema, solidi chiusi e assenza di sovrapposizioni fra gli spazi.
+La suite di **13 test** passa. Il test principale costruisce una nuvola sintetica di due stanze adiacenti, comprese le superfici interne. Verifica l'intera pipeline fino a un IFC4 con **5 pareti e 2 spazi**, profili estrusi, nessun errore schema, solidi chiusi e assenza di sovrapposizioni fra gli spazi.
 
 Gli altri controlli riguardano:
 

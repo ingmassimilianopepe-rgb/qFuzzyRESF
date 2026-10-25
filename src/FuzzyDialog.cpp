@@ -44,6 +44,7 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     layout->addWidget(scope);
     auto* form = new QFormLayout;
     m_python = new QLineEdit(settings.value("python", "python3").toString());
+    m_python->setObjectName("pythonPath");
     auto* pyRow = new QHBoxLayout;
     pyRow->addWidget(m_python);
     auto* pyBrowse = new QPushButton(tr("Sfoglia…"));
@@ -55,6 +56,7 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     });
     form->addRow(tr("Eseguibile Python"), pyRow);
     m_output = new QLineEdit;
+    m_output->setObjectName("outputPath");
     auto* outRow = new QHBoxLayout;
     outRow->addWidget(m_output);
     auto* outBrowse = new QPushButton(tr("Salva come…"));
@@ -71,6 +73,7 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     });
     form->addRow(tr("Nuovo file IFC"), outRow);
     m_units = new QComboBox;
+    m_units->setObjectName("sourceUnits");
     m_units->addItem(tr("Metri"), 1.);
     m_units->addItem(tr("Centimetri"), .01);
     m_units->addItem(tr("Millimetri"), .001);
@@ -99,6 +102,7 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     auto* buttons = new QHBoxLayout;
     buttons->addStretch();
     m_start = new QPushButton(tr("Genera IFC"));
+    m_start->setObjectName("generateIfc");
     m_cancel = new QPushButton(tr("Chiudi"));
     buttons->addWidget(m_start);
     buttons->addWidget(m_cancel);

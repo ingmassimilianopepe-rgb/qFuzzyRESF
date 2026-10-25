@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   group: qfuzzyresf-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   backend:
     strategy:
@@ -62,7 +62,7 @@ jobs:
           arch: win64_msvc2022_64
           cache: true
       - name: Configure
-        run: cmake -S CloudCompare -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/dist -DPLUGIN_STANDARD_QFUZZYRESF=ON -DOPTION_BUILD_CCVIEWER=OFF -DCCCORELIB_USE_TBB=OFF -DCCCORELIB_USE_CGAL=OFF
+        run: cmake -S CloudCompare -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/dist -DPLUGIN_STANDARD_QFUZZYRESF=ON -DQFUZZYRESF_BUILD_SMOKE_TESTS=ON -DOPTION_BUILD_CCVIEWER=OFF -DCCCORELIB_USE_TBB=OFF -DCCCORELIB_USE_CGAL=OFF
       - name: Build CloudCompare and plugin
         run: cmake --build build --config Release --parallel 3
       - name: Install matching build
@@ -79,6 +79,16 @@ jobs:
           Copy-Item plugin/scripts (Join-Path $exe.DirectoryName 'scripts') -Recurse
           Copy-Item plugin/docs (Join-Path $exe.DirectoryName 'docs') -Recurse
           Copy-Item plugin/README.md,plugin/LICENSE $exe.DirectoryName
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: plugin/backend/requirements.txt
+      - run: python -m pip install -r plugin/backend/requirements.txt
+      - name: Native plugin and Qt-to-IFC bridge smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python plugin/scripts/native_smoke.py build dist
       - uses: actions/upload-artifact@v4
         with:
           name: qFuzzyRESF-${{ runner.os }}-CloudCompare-001bfd0
