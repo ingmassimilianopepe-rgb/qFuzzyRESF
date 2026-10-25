@@ -73,6 +73,8 @@ jobs:
           cmake -S LASzip -B laszip-build -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/laszip-install
           cmake --build laszip-build --config Release --parallel 3
           cmake --install laszip-build --config Release
+          # LASzip 3.5.0 installs laszip_api.h but omits this public dependency.
+          Copy-Item LASzip/include/laszip/laszip_common.h laszip-install/include/laszip/laszip_common.h
       - name: Configure
         run: cmake -S CloudCompare -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/dist "-DCMAKE_PREFIX_PATH=${{ env.QT_ROOT_DIR }};${{ github.workspace }}/laszip-install" -DPLUGIN_IO_QLAS=ON -DOPTION_MP_BUILD=ON -DPLUGIN_STANDARD_QFUZZYRESF=ON -DQFUZZYRESF_BUILD_SMOKE_TESTS=ON -DOPTION_BUILD_CCVIEWER=OFF -DCCCORELIB_USE_TBB=OFF -DCCCORELIB_USE_CGAL=OFF
       - name: Build CloudCompare and plugin
@@ -93,6 +95,9 @@ jobs:
           $crt = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Filter Microsoft.VC143.CRT -Directory -Recurse | Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
           if (-not $crt) { throw 'MSVC x64 redistributable runtime missing' }
           Copy-Item (Join-Path $crt.FullName '*.dll') $exe.DirectoryName
+          $omp = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Filter vcomp140.dll -File -Recurse | Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $omp) { throw 'MSVC x64 OpenMP runtime missing' }
+          Copy-Item $omp.FullName $exe.DirectoryName
           Copy-Item plugin/backend (Join-Path $exe.DirectoryName 'backend') -Recurse
           Copy-Item plugin/scripts (Join-Path $exe.DirectoryName 'scripts') -Recurse
           Copy-Item plugin/docs (Join-Path $exe.DirectoryName 'docs') -Recurse
