@@ -87,6 +87,12 @@ jobs:
           if (-not $exe) { throw 'CloudCompare.exe missing' }
           windeployqt --release --no-translations $exe.FullName
           if ($LASTEXITCODE -ne 0) { throw 'windeployqt failed' }
+          # windeployqt may omit the MSVC runtime outside a developer shell.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $crt = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Filter Microsoft.VC143.CRT -Directory -Recurse | Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $crt) { throw 'MSVC x64 redistributable runtime missing' }
+          Copy-Item (Join-Path $crt.FullName '*.dll') $exe.DirectoryName
           Copy-Item plugin/backend (Join-Path $exe.DirectoryName 'backend') -Recurse
           Copy-Item plugin/scripts (Join-Path $exe.DirectoryName 'scripts') -Recurse
           Copy-Item plugin/docs (Join-Path $exe.DirectoryName 'docs') -Recurse
