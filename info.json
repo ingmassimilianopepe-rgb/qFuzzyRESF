@@ -1,0 +1,12 @@
+{
+  "type": "Standard",
+  "name": "qFuzzyRESF · Scan to BIM",
+  "icon": ":/CC/plugin/qFuzzyRESF/resources/icon.svg",
+  "description": "Pilot fuzzy Scan-to-BIM: selected point cloud to IFC4 walls and provisional interior spaces. Requires external Python dependencies.",
+  "authors": [
+    {"name": "Massimiliano Pepe", "email": "massimiliano.pepe@unich.it"},
+    {"name": "Donato Palumbo"}
+  ],
+  "maintainers": [{"name": "Massimiliano Pepe", "email": "massimiliano.pepe@unich.it"}],
+  "references": [{"text": "Source, method and installation", "url": "https://github.com/ingmassimilianopepe-rgb/qFuzzyRESF"}]
+}

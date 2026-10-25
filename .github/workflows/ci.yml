@@ -1,0 +1,86 @@
+name: Build and test qFuzzyRESF
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: qfuzzyresf-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r backend/requirements.txt
+      - run: python backend/run_pipeline.py --check
+      - run: python -m pytest -q
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - uses: actions/checkout@v4
+        with:
+          repository: CloudCompare/CloudCompare
+          ref: 001bfd04a13101bfee84a28a6eaa3c7a6338b526
+          path: CloudCompare
+      - name: Core submodules
+        working-directory: CloudCompare
+        run: git submodule update --init --depth 1 libs/qCC_db/extern/CCCoreLib libs/qPCP libs/CCAppCommon/QDarkStyleSheet
+      - name: Attach plugin
+        shell: bash
+        run: |
+          mkdir -p CloudCompare/plugins/private/qFuzzyRESF
+          cp -r plugin/. CloudCompare/plugins/private/qFuzzyRESF/
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools libqt6opengl6-dev libgl1-mesa-dev
+      - name: Windows Qt
+        if: runner.os == 'Windows'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          cache: true
+      - name: Configure
+        run: cmake -S CloudCompare -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/dist -DPLUGIN_STANDARD_QFUZZYRESF=ON -DOPTION_BUILD_CCVIEWER=OFF -DCCCORELIB_USE_TBB=OFF -DCCCORELIB_USE_CGAL=OFF
+      - name: Build CloudCompare and plugin
+        run: cmake --build build --config Release --parallel 3
+      - name: Install matching build
+        run: cmake --install build --config Release
+      - name: Bundle Qt runtime on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Recurse -Filter CloudCompare.exe | Select-Object -First 1
+          if (-not $exe) { throw 'CloudCompare.exe missing' }
+          windeployqt --release --no-translations $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'windeployqt failed' }
+          Copy-Item plugin/backend (Join-Path $exe.DirectoryName 'backend') -Recurse
+          Copy-Item plugin/scripts (Join-Path $exe.DirectoryName 'scripts') -Recurse
+          Copy-Item plugin/docs (Join-Path $exe.DirectoryName 'docs') -Recurse
+          Copy-Item plugin/README.md,plugin/LICENSE $exe.DirectoryName
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qFuzzyRESF-${{ runner.os }}-CloudCompare-001bfd0
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
