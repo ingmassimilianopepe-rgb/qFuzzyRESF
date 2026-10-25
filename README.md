@@ -46,7 +46,7 @@ python -m pip install -r backend/requirements.txt
 python -m pytest -q
 ```
 
-La CI verifica il motore su Linux/Windows e compila CloudCompare con il plugin contro un commit fissato. I pacchetti di prova sono scaricabili dagli **Artifacts** del workflow riuscito; non sono release stabili e richiedono comunque l'ambiente Python.
+La CI verifica il motore su Linux/Windows e compila CloudCompare con il plugin contro un commit fissato. I pacchetti includono il lettore LAS/LAZ di CloudCompare. I pacchetti di prova sono scaricabili dagli **Artifacts** del workflow riuscito; non sono release stabili e richiedono comunque l'ambiente Python.
 
 ## Autori e licenza
 

@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   group: qfuzzyresf-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   backend:
     strategy:
@@ -53,7 +53,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools libqt6opengl6-dev libgl1-mesa-dev
+          sudo apt-get install -y qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools libqt6opengl6-dev libgl1-mesa-dev liblaszip-dev
       - name: Windows Qt
         if: runner.os == 'Windows'
         uses: jurplel/install-qt-action@v4
@@ -61,8 +61,20 @@ jobs:
           version: '6.8.3'
           arch: win64_msvc2022_64
           cache: true
+      - uses: actions/checkout@v4
+        if: runner.os == 'Windows'
+        with:
+          repository: LASzip/LASzip
+          ref: fa089bd8b2b4ca5631e199d257374c32a125f73f
+          path: LASzip
+      - name: Windows LASzip
+        if: runner.os == 'Windows'
+        run: |
+          cmake -S LASzip -B laszip-build -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/laszip-install
+          cmake --build laszip-build --config Release --parallel 3
+          cmake --install laszip-build --config Release
       - name: Configure
-        run: cmake -S CloudCompare -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/dist -DPLUGIN_STANDARD_QFUZZYRESF=ON -DQFUZZYRESF_BUILD_SMOKE_TESTS=ON -DOPTION_BUILD_CCVIEWER=OFF -DCCCORELIB_USE_TBB=OFF -DCCCORELIB_USE_CGAL=OFF
+        run: cmake -S CloudCompare -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/dist "-DCMAKE_PREFIX_PATH=${{ env.QT_ROOT_DIR }};${{ github.workspace }}/laszip-install" -DPLUGIN_IO_QLAS=ON -DOPTION_MP_BUILD=ON -DPLUGIN_STANDARD_QFUZZYRESF=ON -DQFUZZYRESF_BUILD_SMOKE_TESTS=ON -DOPTION_BUILD_CCVIEWER=OFF -DCCCORELIB_USE_TBB=OFF -DCCCORELIB_USE_CGAL=OFF
       - name: Build CloudCompare and plugin
         run: cmake --build build --config Release --parallel 3
       - name: Install matching build
@@ -79,6 +91,7 @@ jobs:
           Copy-Item plugin/scripts (Join-Path $exe.DirectoryName 'scripts') -Recurse
           Copy-Item plugin/docs (Join-Path $exe.DirectoryName 'docs') -Recurse
           Copy-Item plugin/README.md,plugin/LICENSE $exe.DirectoryName
+          Copy-Item LASzip/COPYING.txt (Join-Path $exe.DirectoryName "docs/LASzip_LICENSE.txt")
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

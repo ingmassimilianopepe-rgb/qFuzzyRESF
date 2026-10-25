@@ -41,7 +41,7 @@ Nel dialogo selezionare `.venv/Scripts/python.exe` (Windows) o `.venv/bin/python
 Installare CMake ≥3.20, compilatore C++17 e Qt 6. Su Windows usare Visual Studio 2022 x64 e Qt 6.8.3 `msvc2022_64`. Su Ubuntu 24.04:
 
 ```bash
-sudo apt install build-essential cmake qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools libqt6opengl6-dev libgl1-mesa-dev
+sudo apt install build-essential cmake qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools libqt6opengl6-dev libgl1-mesa-dev liblaszip-dev
 ```
 
 Preparare il sorgente e i sottomoduli necessari:
@@ -64,7 +64,9 @@ cmake --install build --config Release
 
 Su Windows aggiungere alla configurazione, ad esempio, `-DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/msvc2022_64`, poi eseguire `windeployqt --release` sull'eseguibile installato. Il nome della cartella del plugin deve essere **qFuzzyRESF**: il sistema di build di CloudCompare cerca la risorsa `qFuzzyRESF.qrc` in base a quel nome.
 
-La build minima non include tutti i lettori opzionali di CloudCompare (ad esempio E57). Per questi formati compilare e abilitare il relativo plugin I/O seguendo le istruzioni ufficiali oppure convertire la nuvola in un formato già leggibile. Il motore standalone legge LAS/LAZ.
+I pacchetti CI includono il lettore LAS/LAZ (`PLUGIN_IO_QLAS=ON`). Su Linux la dipendenza è `liblaszip-dev`; su Windows la CI compila LASzip 3.5.0 dal commit `fa089bd8b2b4ca5631e199d257374c32a125f73f`, lo installa in `laszip-install` e aggiunge quella cartella a `CMAKE_PREFIX_PATH`. Per includerlo nella compilazione manuale usare lo stesso procedimento e aggiungere `-DPLUGIN_IO_QLAS=ON`.
+
+La build minima non include tutti gli altri lettori opzionali di CloudCompare (ad esempio E57). Per questi formati compilare e abilitare il relativo plugin I/O seguendo le istruzioni ufficiali oppure convertire la nuvola in un formato già leggibile. Il motore standalone legge LAS/LAZ.
 
 ## Problemi frequenti
 
