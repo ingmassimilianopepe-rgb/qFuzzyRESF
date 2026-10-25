@@ -10,7 +10,13 @@ Il motore è incorporato come sorgente Python nelle risorse del plugin. Le libre
 
 Nella scheda [Actions](https://github.com/ingmassimilianopepe-rgb/qFuzzyRESF/actions), aprire un workflow **riuscito** e scaricare l'artifact `qFuzzyRESF-Windows-CloudCompare-001bfd0` o Linux. Gli artifact hanno conservazione di 30 giorni. Su Windows il pacchetto contiene applicazione, plugin e runtime Qt della stessa build. Python e le sue dipendenze restano da installare.
 
-Questi pacchetti sono build di prova, non installer firmati o release stabili. L'avvio e il flusso grafico completo vanno ancora verificati su una postazione con interfaccia grafica. Su Linux il pacchetto richiede le librerie Qt/OpenGL del sistema compatibile con il runner Ubuntu 24.04.
+Questi pacchetti sono build di prova, non installer firmati o release stabili. L'avvio e il flusso grafico completo vanno ancora verificati su una postazione con interfaccia grafica. Su Linux il pacchetto richiede le librerie Qt/OpenGL e LASzip del sistema compatibile con il runner Ubuntu 24.04. Se estratto in una cartella diversa dal prefisso di compilazione, avviarlo dalla cartella estratta con:
+
+```bash
+LD_LIBRARY_PATH="$PWD/lib/cloudcompare${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./bin/CloudCompare
+```
+
+Per installare il motore Python su Linux usare gli script del repository, non inclusi nell'artifact nativo Linux.
 
 ## Ambiente Python
 

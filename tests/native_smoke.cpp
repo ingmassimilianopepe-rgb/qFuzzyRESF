@@ -7,6 +7,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -62,7 +63,7 @@ int main(int argc, char** argv)
     QTimer timer;
     QObject::connect(&timer, &QTimer::timeout, [&] {
         if (!started || !start->isEnabled()) return;
-        if (dialog.resultPath() == output) outcome = 0;
+        if (!dialog.resultPath().isEmpty() && QFileInfo(dialog.resultPath()).canonicalFilePath() == QFileInfo(output).canonicalFilePath()) outcome = 0;
         else std::cerr << dialog.findChild<QPlainTextEdit*>()->toPlainText().toStdString();
         app.quit();
     });
