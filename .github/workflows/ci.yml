@@ -1,6 +1,7 @@
 name: Build and test qFuzzyRESF
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -42,7 +43,7 @@ jobs:
           path: CloudCompare
       - name: Core submodules
         working-directory: CloudCompare
-        run: git submodule update --init --depth 1 libs/qCC_db/extern/CCCoreLib libs/qPCP libs/CCAppCommon/QDarkStyleSheet
+        run: git submodule update --init --recursive --depth 1 libs/qCC_db/extern/CCCoreLib libs/qPCP libs/CCAppCommon/QDarkStyleSheet plugins/core/IO/MeshIO
       - name: Attach plugin
         shell: bash
         run: |
