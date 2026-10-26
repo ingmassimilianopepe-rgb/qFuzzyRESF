@@ -30,7 +30,7 @@
 FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     : QDialog(parent), m_cloud(cloud)
 {
-    setWindowTitle(tr("qFuzzyRESF · dalla nuvola al BIM IFC"));
+    setWindowTitle(tr("qFuzzyRESF 0.2.0 · dalla nuvola al BIM IFC"));
     setModal(true);
     resize(750, 600);
     QSettings settings;
@@ -39,11 +39,21 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     auto* title = new QLabel(tr("Nuvola: %1 · %2 punti").arg(cloud->getName()).arg(cloud->size()));
     title->setTextFormat(Qt::PlainText);
     layout->addWidget(title);
-    auto* scope = new QLabel(tr("Metodo pilota v0.3: un livello, pareti prevalentemente ortogonali, pavimento, soffitto e spazi interni provvisori. Porte, finestre e pareti curve richiedono modellazione successiva. Z deve essere verticale; allineare le pareti principali a X/Y (±10°)."));
+    auto* scope = new QLabel(tr("Metodo pilota v0.4. Interno: un livello con pavimento e soffitto rilevati, pareti ortogonali. Esterno: pareti planari e falde inclinate, senza stanze. Z deve essere verticale. Spessori e classificazioni richiedono verifica."));
     scope->setWordWrap(true);
     layout->addWidget(scope);
     auto* form = new QFormLayout;
-    m_python = new QLineEdit(settings.value("python", "python3").toString());
+    QString python = settings.value("python", "python3").toString();
+    if (!QFileInfo::exists(python)) {
+        const QStringList candidates = {
+            qEnvironmentVariable("LOCALAPPDATA") + "/qFuzzyRESF/.venv/Scripts/python.exe",
+            QCoreApplication::applicationDirPath() + "/.venv/Scripts/python.exe",
+            QCoreApplication::applicationDirPath() + "/.venv/bin/python"
+        };
+        for (const auto& candidate : candidates)
+            if (QFileInfo::exists(candidate)) { python = candidate; break; }
+    }
+    m_python = new QLineEdit(python);
     m_python->setObjectName("pythonPath");
     auto* pyRow = new QHBoxLayout;
     pyRow->addWidget(m_python);
@@ -79,10 +89,16 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     m_units->addItem(tr("Millimetri"), .001);
     m_units->setCurrentIndex(settings.value("units", 0).toInt());
     form->addRow(tr("Unità delle coordinate originali"), m_units);
+    m_mode = new QComboBox;
+    m_mode->setObjectName("reconstructionMode");
+    m_mode->addItem(tr("Interno — un piano e stanze provvisorie"), "interior");
+    m_mode->addItem(tr("Esterno — pareti e coperture, senza stanze"), "exterior");
+    m_mode->setCurrentIndex(settings.value("mode", 0).toInt());
+    form->addRow(tr("Modalità di ricostruzione"), m_mode);
     m_profile = new QComboBox;
-    m_profile->addItem(tr("Fuzzy monotono v0.3 (predefinito)"), "monotone");
+    m_profile->addItem(tr("Fuzzy monotono (predefinito)"), "monotone");
     m_profile->addItem(tr("Solo geometria (confronto sperimentale)"), "geometry_only");
-    m_profile->addItem(tr("Fuzzy legacy (confronto sperimentale)"), "legacy");
+    m_profile->addItem(tr("Fuzzy legacy (solo Interno)"), "legacy");
     form->addRow(tr("Profilo"), m_profile);
     m_limit = new QSpinBox;
     m_limit->setRange(1, 20);
@@ -135,7 +151,7 @@ void FuzzyDialog::setBusy(bool busy)
 {
     m_busy = busy;
     m_start->setEnabled(!busy);
-    for (QWidget* widget : QList<QWidget*>{m_python, m_output, m_units, m_profile, m_limit})
+    for (QWidget* widget : QList<QWidget*>{m_python, m_output, m_units, m_profile, m_mode, m_limit})
         widget->setEnabled(!busy);
     m_cancel->setText(busy ? tr("Annulla") : tr("Chiudi"));
 }
@@ -162,7 +178,7 @@ bool FuzzyDialog::prepareJob(QString& requestPath)
         throw std::runtime_error("Output già esistente: scegliere un nuovo nome.");
     m_work = std::make_unique<QTemporaryDir>(output.absolutePath() + "/.qfuzzyresf-job-XXXXXX");
     if (!m_work->isValid()) throw std::runtime_error("Impossibile creare la cartella temporanea.");
-    const QStringList files = {"run_pipeline.py", "fuzzyresf/__init__.py", "fuzzyresf/cli.py", "fuzzyresf/cloud.py", "fuzzyresf/inference.py", "fuzzyresf/ifc.py"};
+    const QStringList files = {"run_pipeline.py", "fuzzyresf/__init__.py", "fuzzyresf/cli.py", "fuzzyresf/cloud.py", "fuzzyresf/inference.py", "fuzzyresf/ifc.py", "fuzzyresf/levels.py", "fuzzyresf/exterior.py", "fuzzyresf/exterior_ifc.py"};
     QDir().mkpath(m_work->filePath("fuzzyresf"));
     for (const auto& file : files) {
         QFile resource(":/CC/plugin/qFuzzyRESF/backend/" + file);
@@ -198,6 +214,7 @@ bool FuzzyDialog::prepareJob(QString& requestPath)
         {"output", destination}, {"work_dir", m_work->path()},
         {"meters_per_unit", m_units->currentData().toDouble()},
         {"profile", m_profile->currentData().toString()},
+        {"mode", m_mode->currentData().toString()},
         {"limits", QJsonObject{{"max_voxels", m_limit->value() * 1000000}}},
         {"cloudcompare", QJsonObject{{"global_shift", QJsonArray{shift.x, shift.y, shift.z}}, {"global_scale", m_cloud->getGlobalScale()}, {"export_coordinates", "GLOBAL"}}}
     };
@@ -221,12 +238,15 @@ void FuzzyDialog::start()
         QSettings settings;
         settings.setValue("qFuzzyRESF/python", m_python->text().trimmed());
         settings.setValue("qFuzzyRESF/units", m_units->currentIndex());
+        settings.setValue("qFuzzyRESF/mode", m_mode->currentIndex());
         settings.setValue("qFuzzyRESF/outputDir", QFileInfo(m_output->text()).absolutePath());
         m_progress->setValue(0);
         log(tr("Avvio motore locale. Le dipendenze devono essere installate nell'interprete selezionato."));
         m_process.setWorkingDirectory(m_work->path());
         auto environment = QProcessEnvironment::systemEnvironment();
         environment.insert("PYTHONUTF8", "1");
+        environment.insert("OPENBLAS_NUM_THREADS", "2");
+        environment.insert("OMP_NUM_THREADS", "2");
         environment.insert("PYTHONUNBUFFERED", "1");
         m_process.setProcessEnvironment(environment);
         m_process.start(m_python->text().trimmed(), {m_work->filePath("run_pipeline.py"), "--request", requestPath});
@@ -252,8 +272,8 @@ void FuzzyDialog::readOutput()
         } else if (type == "result") {
             m_reportedPath = event.value("output").toString();
             const auto counts = event.value("counts").toObject();
-            log(tr("IFC validato: %1 pareti, %2 spazi provvisori.\nReport: %3")
-                .arg(counts.value("IfcWall").toInt()).arg(counts.value("IfcSpace").toInt())
+            log(tr("IFC validato: %1 pareti, %2 falde, %3 spazi provvisori.\nReport: %4")
+                .arg(counts.value("IfcWall").toInt()).arg(counts.value("IfcRoof").toInt()).arg(counts.value("IfcSpace").toInt())
                 .arg(event.value("diagnostics").toString()));
         } else if (event.contains("message")) {
             log(event.value("message").toString());

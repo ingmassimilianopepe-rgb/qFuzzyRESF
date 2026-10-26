@@ -57,6 +57,7 @@ int main(int argc, char** argv)
     dialog.findChild<QLineEdit*>("pythonPath")->setText(QString::fromLocal8Bit(argv[2]));
     dialog.findChild<QLineEdit*>("outputPath")->setText(output);
     dialog.findChild<QComboBox*>("sourceUnits")->setCurrentIndex(2);
+    dialog.findChild<QComboBox*>("reconstructionMode")->setCurrentIndex(0);
     auto* start = dialog.findChild<QPushButton*>("generateIfc");
     int outcome = 9;
     bool started = false;
@@ -85,5 +86,35 @@ int main(int argc, char** argv)
         || std::abs(low[1].toDouble() - 4200000.) > .01
         || std::abs(low[2].toDouble() - 100.) > .01) return 14;
     std::cout << "Plugin loaded; selection and Qt-to-IFC bridge passed: 5 walls, 2 spaces.\n";
+    timer.stop();
+    FuzzyDialog exterior(&cloud, nullptr);
+    const auto extOutput = folder.filePath("Esterno.ifc");
+    exterior.findChild<QLineEdit*>("pythonPath")->setText(QString::fromLocal8Bit(argv[2]));
+    exterior.findChild<QLineEdit*>("outputPath")->setText(extOutput);
+    exterior.findChild<QComboBox*>("sourceUnits")->setCurrentIndex(2);
+    exterior.findChild<QComboBox*>("reconstructionMode")->setCurrentIndex(1);
+    auto* extStart = exterior.findChild<QPushButton*>("generateIfc");
+    bool extStarted = false;
+    outcome = 15;
+    QTimer extTimer;
+    QObject::connect(&extTimer, &QTimer::timeout, [&] {
+        if (!extStarted || !extStart->isEnabled()) return;
+        if (QFileInfo(exterior.resultPath()).canonicalFilePath() == QFileInfo(extOutput).canonicalFilePath()
+            && QFileInfo::exists(extOutput)) outcome = 0;
+        else std::cerr << exterior.findChild<QPlainTextEdit*>()->toPlainText().toStdString();
+        app.quit();
+    });
+    extTimer.start(100);
+    QTimer::singleShot(0, [&] { extStart->click(); extStarted = true; });
+    exterior.show();
+    app.exec();
+    if (outcome != 0) return outcome;
+    QFile extFile(folder.filePath("Esterno.fuzzyresf/summary.json"));
+    if (!extFile.open(QIODevice::ReadOnly)) return 16;
+    const auto extSummary = QJsonDocument::fromJson(extFile.readAll()).object();
+    const auto extCounts = extSummary.value("counts").toObject();
+    if (extSummary.value("mode").toString() != "exterior" || extCounts.value("IfcSpace").toInt() != 0
+        || extCounts.value("IfcRoof").toInt() < 1 || extCounts.value("IfcWall").toInt() < 4) return 17;
+    std::cout << "Exterior Qt-to-IFC bridge passed: walls and roof, zero invented rooms.\n";
     return 0;
 }

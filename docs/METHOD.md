@@ -1,15 +1,15 @@
-# Metodo implementato: Fuzzy-RESF v0.3
+# Metodo implementato: Fuzzy-RESF v0.4
 
 Questa implementazione trasferisce il prototipo numerico usato nei casi studio nel motore del plugin. È un metodo **pilota, geometrico e fuzzy**, con valori esperti fissi; non è un modello addestrato e non è dimostrata una superiorità generale sui metodi della letteratura.
 
-## Sequenza operativa
+## Modalità Interno
 
 | Passaggio | Algoritmo e parametri | Risultato / limite |
 |---|---|---|
 | Coordinate | Ripristino `toGlobal3d` di CloudCompare, conversione esplicita in metri, origine numerica locale conservata | Coordinate globali ripristinate nel posizionamento IFC; nessun CRS inventato |
 | Riduzione | Voxel di 0,05 m, primo punto originale per cella | Nessuna media dei punti; elaborazione a blocchi |
 | Superfici locali | PCA dei 20 vicini, normale = autovettore del minimo autovalore | Planarità `(λ₂−λ₁)/max(λ₃,10⁻¹⁵)` con autovalori crescenti |
-| Livello | Istogramma Z da 0,02 m delle superfici orizzontali; due picchi più forti | Un livello principale, altezza ammessa 1,8–8 m; soffitto e pavimento devono essere osservati |
+| Livello | Istogramma Z da 0,02 m; valutazione delle coppie tra i primi sei picchi, altezza e sovrapposizione XY | Un livello principale, altezza ammessa 1,8–8 m; soffitto e pavimento devono essere osservati |
 | Orientamento | Mediana delle normali verticali ripiegate modulo 90°, limitata a ±10° intorno agli assi iniziali | Non è un estimatore generale dell'orientamento: preparare la nuvola in CloudCompare |
 | Proposte di parete | Due famiglie ortogonali; istogrammi da 0,025 m, filtro gaussiano σ=0,8, picchi multipli | Tolleranza angolare 12°, banda finale ±0,045 m, almeno 120 punti e 0,8 m di sviluppo |
 | Supporto fuzzy | Cinque membership e Sugeno monotono, soglia 0,70 | Indice di supporto esperto; non probabilità |
@@ -47,13 +47,29 @@ Il watershed usa il negativo della distanza dalle pareti sul dominio libero. I m
 
 Le relazioni `IfcRelSpaceBoundary` sono di primo livello. Un bordo è associato a una parete candidata se tre punti del segmento distano al massimo 0,13 m dal relativo poligono. Gli altri bordi hanno `IfcVirtualElement`, senza geometria di parete inventata. I confini virtuali possono essere numerosi a causa della rasterizzazione e dell'assenza di chiusure osservate. Non sono confini termici certificati né relazioni di secondo livello.
 
+## Selezione del livello nella v0.4
+
+Le quote sono adattate con la mediana dei punti orizzontali entro ±0,08 m dal picco. Ogni superficie occupa un insieme di celle XY da 0,20 m. Una coppia richiede altezza 1,8–8 m, almeno 5 m² di celle per superficie, intersezione pari almeno al 60% dell'insieme minore e al 35% del maggiore. Superfici intermedie con area ≥35% della minore e sovrapposizione ≥35% dell'intersezione invalidano la coppia. Lo score è il numero di celle condivise moltiplicato per la media geometrica dei due rapporti di sovrapposizione. Due intervalli di piano distinti con score entro il 15% provocano una richiesta di ritaglio. È un filtro geometrico, non una prova semantica di pavimento/soffitto: tavoli, terrazzi e rilievi incompleti possono ancora richiedere intervento manuale.
+
+## Modalità Esterno nella v0.4
+
+La nuova modalità non usa la coppia pavimento/soffitto e non impone assi XY alle facciate. Rimane necessaria Z verticale. Usa gli stessi voxel e normali PCA, poi:
+
+1. **Proposte di piano** con RANSAC guidato dalle normali: seme 48021, massimo 16.000 punti e 96 normali candidate per iterazione; soglia iniziale 5 cm, due rifit PCA con banda 6 cm e accordo normale entro 12°. Budget: 28 piani verticali e 18 piani di copertura. Le componenti connesse possono produrre più elementi per piano.
+2. **Pareti candidate** da normali con |nz|<0,20. **Coperture candidate** da |nz|≥0,25, osservazioni entro 0,30 m dal massimo della colonna XY da 0,30 m e quota mediana del piano almeno pari al quantile Z 60% della nuvola. Sono criteri geometrici: terrazzi, terreno elevato e superfici di altri oggetti possono essere classificati erroneamente. Ritagliare un edificio.
+3. **Contorni nel piano locale**: raster da 0,15 m, closing 3×3, componenti da almeno 1,5 m² per pareti o 4 m² per falde, semplificazione 0,07 m. Espansione di 0,002 m per separare i contatti puntuali tra anelli, che genererebbero spigoli non-manifold nell'estrusione. I vuoti grandi sono conservati senza classificarli come finestre.
+4. **Supporto fuzzy monotono** con cinque membership e score equivalente a una base Sugeno completa: `S = 0,25 P + 0,30 R + 0,20 N + 0,10 A + 0,15 C`. Con `r(x;a,b)=clip((x-a)/(b-a),0,1)`: P=r(planarità;0,25;0,65), R=1-r(residuoP95;0,025;0,07), N=r(mediana accordo normali;0,90;0,99), A=r(area;1,5;12), C=r(copertura raster;0,40;0,90). Accettazione con score ≥0,65 e P95≤0,06 m. `geometry_only` rimuove solo la soglia fuzzy. Valori esperti, non calibrati sui sei benchmark.
+5. **IFC parametrico**: ogni componente diventa un profilo estruso nel piano misurato, con asse di estrusione normale alla superficie. `IfcWall` per pareti e `IfcRoof` per falde; spessori rispettivamente 0,20 e 0,15 m, **assunti e centrati sulla superficie osservata**. Contenimento nell'edificio, senza piani o stanze inventati. Le falde inclinate mantengono l'orientamento 3D.
+
+Ogni elemento ha evidenze, residui, score e richiesta di revisione. Il modello può contenere porzioni sovrapposte, non raccordate o mancanti: **non è un involucro chiuso certificato**, né un modello già pronto per computi o simulazioni energetiche. Lo schema IFC e la chiusura dei singoli solidi non validano la classificazione o la completezza dell'edificio.
+
 ## Cosa rimane da sviluppare
 
-- Estrazione multi-orientamento e primitive curve.
+- Generalizzazione della modalità interna a orientamenti multipli e primitive curve.
 - Distinzione affidabile tra muri, arredi, facciate e superfici temporanee.
 - Visibilità/ray tracing con posizioni di scansione per modellare le occlusioni.
 - Aperture con sottrazioni `IfcOpeningElement`, porte e finestre.
-- Separazione automatica di più livelli, scale, coperture e impianti.
+- Separazione automatica di più livelli, scale, coperture curve o complesse e impianti.
 - Topologia delle stanze validata e benchmark indipendente su tutti i casi studio.
 - Calibrazione dei pesi, stima dell'incertezza e confronto statistico con baseline a parità di input.
 

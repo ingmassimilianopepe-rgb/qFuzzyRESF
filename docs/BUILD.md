@@ -8,7 +8,7 @@ Il motore è incorporato come sorgente Python nelle risorse del plugin. Le libre
 
 ## Pacchetti CI
 
-Nella scheda [Actions](https://github.com/ingmassimilianopepe-rgb/qFuzzyRESF/actions), aprire un workflow **riuscito** e scaricare l'artifact `qFuzzyRESF-Windows-CloudCompare-001bfd0` o Linux. Gli artifact hanno conservazione di 30 giorni. Su Windows il pacchetto contiene applicazione, plugin e runtime Qt della stessa build. Il pacchetto Windows include anche le DLL redistribuibili MSVC e OpenMP. Python e le sue dipendenze restano da installare.
+Nella scheda [Actions](https://github.com/ingmassimilianopepe-rgb/qFuzzyRESF/actions), aprire un workflow **riuscito** e scaricare l'artifact `qFuzzyRESF-0.2.0-Windows-CloudCompare-001bfd0` o Linux. Gli artifact hanno conservazione di 30 giorni. Su Windows il pacchetto contiene applicazione, plugin e runtime Qt della stessa build. Il pacchetto Windows include anche le DLL redistribuibili MSVC e OpenMP. Python e le sue dipendenze restano da installare.
 
 Questi pacchetti sono build di prova, non installer firmati o release stabili. L'avvio e il flusso grafico completo vanno ancora verificati su una postazione con interfaccia grafica. Su Linux il pacchetto richiede le librerie Qt/OpenGL e LASzip del sistema compatibile con il runner Ubuntu 24.04. Se estratto in una cartella diversa dal prefisso di compilazione, avviarlo dalla cartella estratta con:
 
@@ -20,7 +20,9 @@ Per installare il motore Python su Linux usare gli script del repository, non in
 
 ## Ambiente Python
 
-Dalla cartella del progetto o del pacchetto Windows:
+Su Windows fare doppio clic su `INSTALLA_qFuzzyRESF.cmd` accanto a CloudCompare.exe. Il launcher usa percorsi assoluti relativi alla propria posizione, quindi non dipende dalla cartella corrente del terminale. Python 3.12 x64 e il launcher `py` devono essere installati; serve accesso a PyPI. L'ambiente viene creato in `%LOCALAPPDATA%\qFuzzyRESF\.venv`, già usato nella procedura di assistenza. Il plugin lo riconosce automaticamente se non esiste un interprete valido salvato nelle preferenze.
+
+In alternativa, dalla cartella del progetto o del pacchetto Windows:
 
 ```powershell
 # Windows: Python 3.12 x64 deve essere già installato
@@ -35,12 +37,13 @@ sh scripts/install_backend.sh
 Se una policy aziendale impedisce gli script, creare l'ambiente manualmente senza modificarla:
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
-.\.venv\Scripts\python.exe backend\run_pipeline.py --check
+$qfEnv = Join-Path $env:LOCALAPPDATA 'qFuzzyRESF\.venv'
+py -3.12 -m venv "$qfEnv"
+& "$qfEnv\Scripts\python.exe" -m pip install -r .\backend\requirements.txt
+& "$qfEnv\Scripts\python.exe" .\backend\run_pipeline.py --check
 ```
 
-Nel dialogo selezionare `.venv/Scripts/python.exe` (Windows) o `.venv/bin/python` (Linux), senza argomenti aggiunti. Percorsi con spazi sono supportati: il plugin passa gli argomenti tramite `QProcess`, senza shell.
+Nel dialogo selezionare `%LOCALAPPDATA%/qFuzzyRESF/.venv/Scripts/python.exe` (Windows, espandendo il percorso reale) o `.venv/bin/python` (Linux), senza argomenti aggiunti. Percorsi con spazi sono supportati: il plugin passa gli argomenti tramite `QProcess`, senza shell.
 
 ## Compilazione da sorgente
 
@@ -82,7 +85,7 @@ La build minima non include tutti gli altri lettori opzionali di CloudCompare (a
 | Azione disabilitata | Selezionare una sola vera nuvola nell'albero DB, non un gruppo o una mesh |
 | Avvio Python fallito | Selezionare il percorso completo dell'interprete del venv |
 | `ModuleNotFoundError` | Installare `backend/requirements.txt` con quello stesso interprete |
-| Due piani orizzontali mancanti | Verificare Z verticale, unità e presenza di pavimento/soffitto; ritagliare il livello |
+| Coppia pavimento/soffitto non supportata | Se il rilievo è esterno, scegliere Esterno. Per gli interni verificare Z verticale, unità e pavimento/soffitto sovrapposti in pianta; ritagliare un solo livello |
 | Limite voxel/raster | Ritagliare la nuvola; aumentare il limite voxel solo con RAM sufficiente |
 | Output esistente | Scegliere un nuovo nome; anche la cartella `.fuzzyresf` deve essere libera |
 | Errore di pubblicazione su volume remoto | Usare una cartella locale che supporti hard link (ad esempio NTFS/ext4); il salvataggio atomico non ripiega su copie incomplete |

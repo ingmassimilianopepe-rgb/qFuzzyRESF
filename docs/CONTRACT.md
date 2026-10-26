@@ -22,6 +22,7 @@ Esempio di job:
   "output": "/percorso/edificio.ifc",
   "meters_per_unit": 1.0,
   "profile": "monotone",
+  "mode": "interior",
   "limits": {"max_voxels": 3000000, "max_raster_cells": 4000000},
   "cloudcompare": {
     "global_shift": [0, 0, 0],
@@ -32,6 +33,8 @@ Esempio di job:
 ```
 
 `work_dir` opzionale è una cartella temporanea, sullo stesso filesystem dell'output, posseduta dal chiamante. Il plugin la usa per garantire la pulizia anche dopo l'arresto forzato del processo. Il motore standalone crea e rimuove autonomamente la propria cartella temporanea.
+
+`mode` è opzionale e vale `interior` (predefinito, compatibilità schema 1) oppure `exterior`. La modalità è sempre esplicita nella GUI, nei report e nel risultato. Nessun fallback automatico dagli interni agli esterni. `exterior` rifiuta il profilo `legacy` prima di elaborare i punti.
 
 I profili validi sono `monotone`, `legacy`, `geometry_only`. Le unità vengono convertite **una sola volta** in `cloud.analyse`. I limiti voxel e raster vengono controllati prima delle operazioni più onerose; non rappresentano una garanzia universale di memoria disponibile. I percorsi di input e output devono essere distinti e l'output deve essere nuovo.
 

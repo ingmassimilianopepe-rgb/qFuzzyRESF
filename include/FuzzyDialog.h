@@ -23,7 +23,7 @@ public:
 private:
     ccPointCloud* m_cloud;
     QLineEdit *m_python, *m_output;
-    QComboBox *m_units, *m_profile;
+    QComboBox *m_units, *m_profile, *m_mode;
     QSpinBox* m_limit;
     QProgressBar* m_progress;
     QPlainTextEdit* m_log;

@@ -1,4 +1,16 @@
-# Verifica del porting e piano di collaudo
+# Verifiche e piano di collaudo
+
+## Versione 0.2.0 — 26 ottobre 2026
+
+La suite locale di **20 test** passa. Restano i test delle due stanze (5 pareti, 2 spazi) e si aggiungono: scelta di una coppia valida oltre i primi due picchi; rifiuto di altezza errata con quota esplicita; ambiguità fra più livelli; contorni con contatti puntuali; casa sintetica ruotata di 27° con tetto a due falde, unità millimetri e coordinate di rilievo (4 pareti, 2 falde, zero stanze); rifiuto di modalità/profili incompatibili.
+
+È stata inoltre elaborata **da zero la LAS originale**, non solo gli intermedi: `point cloud building(1).las`, SHA-256 `8000724aa7f87536b9a9894efe97113c45b8b9ce71c411e8973293565e77baba`, 16.530.672 punti e 376.790 voxel. In modalità Esterno il motore restituisce **28 porzioni di parete e 3 falde candidate**, 31 solidi chiusi e nessun messaggio di validazione schema. Non produce stanze né piani. È una verifica funzionale su un rilievo esterno: non misura accuratezza, completezza o correttezza semantica rispetto a un BIM di riferimento. Le porzioni non equivalgono al numero di muri fisici dell'edificio.
+
+La CI compila e prova il dialogo Qt in **entrambe le modalità**, oltre all'importazione LAS/LAZ nel CloudCompare distribuito. Consultare il workflow del commit per gli esiti Windows/Linux. La verifica su GUI reale e in un visualizzatore IFC indipendente rimane necessaria.
+
+Le verifiche CaseStudy6 sotto riguardano esclusivamente la **versione precedente 0.1.0**: la nuova selezione del livello deve essere rivalutata nei sei casi studio. Nessuna equivalenza generale con i risultati precedenti viene presunta.
+
+## Storico versione 0.1.0
 
 ## Verifiche eseguite localmente
 

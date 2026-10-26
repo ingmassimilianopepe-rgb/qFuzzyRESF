@@ -1,4 +1,4 @@
-param([string]$EnvironmentPath = (Join-Path $PSScriptRoot '..\.venv'))
+param([string]$EnvironmentPath = (Join-Path $env:LOCALAPPDATA 'qFuzzyRESF\.venv'))
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path $PSScriptRoot -Parent
 py -3.12 -m venv $EnvironmentPath

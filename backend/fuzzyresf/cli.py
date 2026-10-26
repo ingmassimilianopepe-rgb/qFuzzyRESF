@@ -74,6 +74,11 @@ def validate_request(request):
     profile = request.get("profile", "monotone")
     if profile not in {"monotone", "legacy", "geometry_only"}:
         raise ValueError("Profilo sconosciuto.")
+    mode = request.get("mode", "interior")
+    if mode not in {"interior", "exterior"}:
+        raise ValueError("Modalita sconosciuta: scegliere interior o exterior.")
+    if mode == "exterior" and profile == "legacy":
+        raise ValueError("Il profilo legacy e disponibile solo in modalita Interno.")
     limits = request.get("limits", {})
     for name, default, minimum, maximum in [
         ("max_voxels", 3_000_000, 500, 20_000_000),
@@ -104,6 +109,7 @@ def run(request):
     from .inference import infer
     from .ifc import build_ifc
 
+    mode = request.get("mode", "interior")
     start = time.perf_counter()
     # Same filesystem for atomic hard-link publication. Existing names never replaced.
     with tempfile.TemporaryDirectory(
@@ -120,35 +126,53 @@ def run(request):
         )
         audit["source"] = request["input"].get("name", path.name)
         audit["cloudcompare"] = request.get("cloudcompare", {})
+        audit["mode"] = mode
         warnings = [
             "Ricostruzione pilota del livello principale; gli spazi richiedono verifica manuale.",
             "Spessori monofaccia e chiusure topologiche sono inferiti; porte e finestre non sono ricostruite.",
         ]
-        if audit["fourfold_concentration"] < 0.5:
+        if mode == "exterior":
+            warnings = [
+                "Modalita Esterno: superfici candidate di pareti e coperture; nessuna stanza o piano inventato.",
+                "Spessori assunti; elementi non raccordati. Involucro parziale, da verificare manualmente.",
+                "Fori non classificati: possono essere aperture reali o zone non rilevate.",
+            ]
+        if mode == "interior" and audit["fourfold_concentration"] < 0.5:
             warnings.append(
                 "Debole struttura Manhattan: pareti curve o oblique possono essere omesse o approssimate."
             )
         for warning in warnings:
             emit("warning", message=warning)
-        inference = infer(
-            P, N, PL, audit, profile, limits["max_raster_cells"], progress
-        )
+        if mode == "exterior":
+            from .exterior import infer_exterior
+            from .exterior_ifc import build_exterior_ifc
+            inference = infer_exterior(P, N, PL, audit, profile, limits["max_raster_cells"], progress)
+            builder = build_exterior_ifc
+        else:
+            inference = infer(P, N, PL, audit, profile, limits["max_raster_cells"], progress)
+            inference["mode"] = "interior"
+            builder = build_ifc
         del P, N, PL
         write_json(work / "audit.json", audit)
         write_json(work / "inference.json", inference)
         progress(75, "Creazione e validazione IFC4")
         candidate = work / "model.ifc"
-        validation = build_ifc(inference, candidate)
+        validation = builder(inference, candidate)
         lengths = validation["space_side_boundary_length_m"]
         virtual_fraction = lengths.get("virtual", 0) / max(sum(lengths.values()), 1e-12)
+        if mode == "exterior" and not validation["counts"]["IfcRoof"]:
+            warning = "Copertura non supportata: esportate soltanto pareti candidate."
+            warnings.append(warning)
+            emit("warning", message=warning)
         if virtual_fraction > 0.3:
-            warning = f"{virtual_fraction:.1%} del perimetro laterale degli spazi è virtuale: topologia non validata."
+            warning = f"{virtual_fraction:.1%} del perimetro laterale degli spazi e virtuale: topologia non validata."
             warnings.append(warning)
             emit("warning", message=warning)
         write_json(work / "validation.json", validation)
         summary = {
-            "tool_version": "0.1.0",
-            "method_version": "0.3",
+            "tool_version": "0.2.0",
+            "mode": mode,
+            "method_version": "0.4",
             "schema_version": 1,
             "profile": profile,
             "source_sha256": audit["sha256"],
@@ -199,6 +223,7 @@ def main(argv=None):
     parser.add_argument(
         "--profile", choices=["monotone", "legacy", "geometry_only"], default="monotone"
     )
+    parser.add_argument("--mode", choices=["interior", "exterior"], default="interior")
     parser.add_argument("--max-voxels", type=int, default=3_000_000)
     args = parser.parse_args(argv)
 
@@ -221,6 +246,7 @@ def main(argv=None):
                 "output": str(args.output),
                 "meters_per_unit": args.meters_per_unit,
                 "profile": args.profile,
+                "mode": args.mode,
                 "limits": {"max_voxels": args.max_voxels},
             }
         return run(request)

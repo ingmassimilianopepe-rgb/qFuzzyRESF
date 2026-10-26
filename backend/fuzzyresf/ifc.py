@@ -115,7 +115,7 @@ def build_ifc(I, output):
     props(
         project,
         {
-            "MethodVersion": "0.3 pilot",
+            "MethodVersion": "0.4 pilot",
             "Profile": I.get("profile", "monotone"),
             "SourceSHA256": I["source_sha256"],
             "ReferenceUsedForReconstruction": False,
@@ -125,7 +125,7 @@ def build_ifc(I, output):
             "RoomTopologyValidated": False,
             "Method": "PCA normals, axis plane proposals, monotone Sugeno support, paired faces, masked distance watershed",
             "FuzzyScoreMeaning": "Support index; not a calibrated probability",
-            "ExperimentalStatus": "Fixed v0.3 pilot parameters; no population-level performance claim",
+            "ExperimentalStatus": "Fixed v0.4 pilot parameters; no population-level performance claim",
             "OpeningsStatus": "Not reconstructed; bridged wall gaps may cover real openings",
         },
     )
@@ -170,7 +170,7 @@ def build_ifc(I, output):
             {
                 "ReviewRequired": True,
                 "SourceSHA256": I["source_sha256"],
-                "MethodVersion": "0.3",
+                "MethodVersion": "0.4",
                 **pr,
             },
         )
@@ -243,7 +243,7 @@ def build_ifc(I, output):
         (0.82, 0.82, 0.82),
     )
     ceiling.PredefinedType = "CEILING"
-    colors = [(0.3, 0.65, 0.8), (0.92, 0.6, 0.3), (0.35, 0.7, 0.45), (0.7, 0.5, 0.8)]
+    colors = [(0.4, 0.65, 0.8), (0.92, 0.6, 0.4), (0.45, 0.7, 0.45), (0.7, 0.5, 0.8)]
     spaces = []
     for i, s in enumerate(I["spaces"]):
         p = shape(s["polygon"])

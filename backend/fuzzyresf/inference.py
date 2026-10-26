@@ -1,4 +1,4 @@
-"""Fuzzy-RESF v0.3 pilot, ported from the six-case research workflow.
+"""Fuzzy-RESF v0.4 pilot, ported from the six-case research workflow.
 Numerical parameters are fixed. No reference model is read by this module.
 SPDX-License-Identifier: GPL-3.0-or-later
 """
@@ -25,20 +25,12 @@ def infer(
     if profile not in {"monotone", "legacy", "geometry_only"}:
         raise ValueError("Profilo sconosciuto")
     start = time.perf_counter()
-    if len(A["horizontal_peaks"]) < 2:
-        raise ValueError(
-            "Servono due piani orizzontali osservati: pavimento e soffitto."
-        )
-    peaks = sorted(A["horizontal_peaks"][:2], key=lambda x: x["z"])
-    seedfloor, seedceil = [x["z"] for x in peaks]
+    from .levels import select_level
+    selected_level = select_level(P, N, PL, A)
+    zf = selected_level["floor_z"]
+    zc = selected_level["ceiling_z"]
+    H = selected_level["height_m"]
     horizontal = (abs(N[:, 2]) > 0.95) & (PL > 0.3)
-    zf = float(np.median(P[horizontal & (abs(P[:, 2] - seedfloor) < 0.08), 2]))
-    zc = float(np.median(P[horizontal & (abs(P[:, 2] - seedceil) < 0.08), 2]))
-    H = zc - zf
-    if not 1.8 <= H <= 8:
-        raise ValueError(
-            "Altezza del livello non plausibile (1.8–8 m). Verificare unità, orientamento Z e ritagliare un solo piano."
-        )
     near = (
         (P[:, 2] > zf + 0.15)
         & (P[:, 2] < zc - 0.10)
@@ -412,14 +404,15 @@ def infer(
             "floor_z": zf,
             "ceiling_z": zc,
             "height_m": H,
+            "pair_selection": selected_level,
             "floor_fit_residual_P95_m": float(
                 np.quantile(
-                    abs(P[horizontal & (abs(P[:, 2] - seedfloor) < 0.08), 2] - zf), 0.95
+                    abs(P[horizontal & (abs(P[:, 2] - zf) < 0.08), 2] - zf), 0.95
                 )
             ),
             "ceiling_fit_residual_P95_m": float(
                 np.quantile(
-                    abs(P[horizontal & (abs(P[:, 2] - seedceil) < 0.08), 2] - zc), 0.95
+                    abs(P[horizontal & (abs(P[:, 2] - zc) < 0.08), 2] - zc), 0.95
                 )
             ),
         },

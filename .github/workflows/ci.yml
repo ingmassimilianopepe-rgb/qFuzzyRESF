@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+env:
+  OPENBLAS_NUM_THREADS: 2
+  OMP_NUM_THREADS: 2
 permissions:
   contents: read
 concurrency:
@@ -104,7 +107,7 @@ jobs:
           Copy-Item plugin/backend (Join-Path $exe.DirectoryName 'backend') -Recurse
           Copy-Item plugin/scripts (Join-Path $exe.DirectoryName 'scripts') -Recurse
           Copy-Item plugin/docs (Join-Path $exe.DirectoryName 'docs') -Recurse
-          Copy-Item plugin/README.md,plugin/LICENSE $exe.DirectoryName
+          Copy-Item plugin/README.md,plugin/LICENSE,plugin/INSTALLA_qFuzzyRESF.cmd $exe.DirectoryName
           Copy-Item LASzip/COPYING.txt (Join-Path $exe.DirectoryName "docs/LASzip_LICENSE.txt")
       - uses: actions/setup-python@v5
         with:
@@ -118,7 +121,7 @@ jobs:
         run: python plugin/scripts/native_smoke.py build dist
       - uses: actions/upload-artifact@v4
         with:
-          name: qFuzzyRESF-${{ runner.os }}-CloudCompare-001bfd0
+          name: qFuzzyRESF-0.2.0-${{ runner.os }}-CloudCompare-001bfd0
           path: dist/
           if-no-files-found: error
           retention-days: 30
