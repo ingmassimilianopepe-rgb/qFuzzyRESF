@@ -73,8 +73,11 @@ jobs:
           cmake -S LASzip -B laszip-build -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/laszip-install
           cmake --build laszip-build --config Release --parallel 3
           cmake --install laszip-build --config Release
-          # LASzip 3.5.0 installs laszip_api.h but omits this public dependency.
-          Copy-Item LASzip/include/laszip/laszip_common.h laszip-install/include/laszip/laszip_common.h
+          # CloudCompare's FindLASzip imports include/, while the 3.5 header
+          # uses <laszip_common.h> unless LASZIP_API_VERSION is defined.
+          Copy-Item LASzip/include/laszip/laszip_common.h laszip-install/include/laszip_common.h
+          cmake -S plugin/tests/laszip_probe -B laszip-probe-build -DLASZIP_ROOT=${{ github.workspace }}/laszip-install
+          cmake --build laszip-probe-build --config Release
       - name: Configure
         run: cmake -S CloudCompare -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/dist "-DCMAKE_PREFIX_PATH=${{ env.QT_ROOT_DIR }};${{ github.workspace }}/laszip-install" -DPLUGIN_IO_QLAS=ON -DOPTION_MP_BUILD=ON -DPLUGIN_STANDARD_QFUZZYRESF=ON -DQFUZZYRESF_BUILD_SMOKE_TESTS=ON -DOPTION_BUILD_CCVIEWER=OFF -DCCCORELIB_USE_TBB=OFF -DCCCORELIB_USE_CGAL=OFF
       - name: Build CloudCompare and plugin
