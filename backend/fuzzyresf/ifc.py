@@ -71,7 +71,8 @@ def build_ifc(I, output):
         )
 
     def polys(g):
-        return [g] if g.geom_type == "Polygon" else list(g.geoms)
+        from .topology import polygons
+        return polygons(g)
 
     def solids(g, z, h):
         return [
@@ -105,9 +106,9 @@ def build_ifc(I, output):
         target_view="MODEL_VIEW",
         parent=ctx,
     )
-    site = root("IfcSite", "Sito con CRS non disponibile")
-    building = root("IfcBuilding", "Edificio ricostruito parzialmente")
-    level = root("IfcBuildingStorey", "Livello principale rilevato")
+    site = root("IfcSite", "Site; CRS unspecified")
+    building = root("IfcBuilding", "Partially reconstructed building")
+    level = root("IfcBuildingStorey", "Main surveyed level")
     level.Elevation = zf + I.get("coordinate_origin_m", [0, 0, 0])[2]
     for parent, child in [(project, site), (site, building), (building, level)]:
         api("aggregate.assign_object", f, products=[child], relating_object=parent)
@@ -115,7 +116,7 @@ def build_ifc(I, output):
     props(
         project,
         {
-            "MethodVersion": "0.4 pilot",
+            "MethodVersion": "0.5 pilot",
             "Profile": I.get("profile", "monotone"),
             "SourceSHA256": I["source_sha256"],
             "ReferenceUsedForReconstruction": False,
@@ -125,7 +126,7 @@ def build_ifc(I, output):
             "RoomTopologyValidated": False,
             "Method": "PCA normals, axis plane proposals, monotone Sugeno support, paired faces, masked distance watershed",
             "FuzzyScoreMeaning": "Support index; not a calibrated probability",
-            "ExperimentalStatus": "Fixed v0.4 pilot parameters; no population-level performance claim",
+            "ExperimentalStatus": "Fixed v0.5 pilot parameters; no population-level performance claim",
             "OpeningsStatus": "Not reconstructed; bridged wall gaps may cover real openings",
         },
     )
@@ -170,7 +171,7 @@ def build_ifc(I, output):
             {
                 "ReviewRequired": True,
                 "SourceSHA256": I["source_sha256"],
-                "MethodVersion": "0.4",
+                "MethodVersion": "0.5",
                 **pr,
             },
         )
@@ -183,7 +184,7 @@ def build_ifc(I, output):
         wall_polys.append(p)
         e = add(
             "IfcWall",
-            w["id"] + " Parete candidata",
+            w["id"] + " Wall candidate",
             p,
             zf,
             H,
@@ -215,7 +216,7 @@ def build_ifc(I, output):
     env = shape(I["envelope"])
     floor = add(
         "IfcSlab",
-        "FL001 Pavimento spessore assunto",
+        "FL001 Floor; assumed thickness",
         env,
         zf - 0.15,
         0.15,
@@ -230,7 +231,7 @@ def build_ifc(I, output):
     floor.PredefinedType = "FLOOR"
     ceiling = add(
         "IfcCovering",
-        "CL001 Soffitto spessore assunto",
+        "CL001 Ceiling; assumed thickness",
         env,
         zc,
         0.10,
@@ -249,7 +250,7 @@ def build_ifc(I, output):
         p = shape(s["polygon"])
         e = add(
             "IfcSpace",
-            s["id"] + " Spazio provvisorio",
+            s["id"] + " Provisional space",
             p,
             zf,
             H,
@@ -363,6 +364,8 @@ def build_ifc(I, output):
                     [[*a, zf], [*b, zf], [*b, zc], [*a, zc]],
                     element,
                 )
+    from .exterior_ifc import add_surfaces
+    add_surfaces(f, project, building, body, I)
     f.write(str(out))
     # Validate the saved STEP file and all exported solids, including room holes.
     m = ifcopenshell.open(str(out))
@@ -404,10 +407,13 @@ def build_ifc(I, output):
     wall_overlap = sum(p.area for p in wall_polys) - unary_union(wall_polys).area
     validation = {
         "schema": "IFC4",
+        "topology": I.get("topology", {}),
         "counts": {
             c: len(m.by_type(c))
             for c in [
                 "IfcWall",
+                "IfcRoof",
+                "IfcBuildingStorey",
                 "IfcSlab",
                 "IfcCovering",
                 "IfcSpace",
@@ -433,8 +439,8 @@ def build_ifc(I, output):
     }
 
     errors = [m for m in logger.statements if m.get("level") in {"error", "critical"}]
-    if errors or failed or any(not m["watertight"] for m in mesh_records):
-        raise ValueError("Validazione IFC fallita: schema o solidi non validi")
+    if errors or failed or any(not m["watertight"] or m["volume_m3"] <= 0 for m in mesh_records):
+        raise ValueError("IFC validation failed: invalid schema or solids")
     if overlap > 1e-6:
-        raise ValueError("Sovrapposizione tra spazi ricostruiti")
+        raise ValueError("Reconstructed spaces overlap")
     return validation

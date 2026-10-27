@@ -1,4 +1,4 @@
-"""Fuzzy-RESF v0.4 pilot, ported from the six-case research workflow.
+"""Fuzzy-RESF v0.5 pilot, ported from the six-case research workflow.
 Numerical parameters are fixed. No reference model is read by this module.
 SPDX-License-Identifier: GPL-3.0-or-later
 """
@@ -8,7 +8,7 @@ import numpy as np
 from scipy import ndimage as ndi
 from scipy.signal import find_peaks
 from skimage.segmentation import watershed
-from shapely.geometry import box, mapping
+from shapely.geometry import box, mapping, shape as geometry_shape
 from shapely.ops import unary_union
 from shapely import contains_xy
 
@@ -23,7 +23,7 @@ def infer(
     progress=lambda percent, stage: None,
 ):
     if profile not in {"monotone", "legacy", "geometry_only"}:
-        raise ValueError("Profilo sconosciuto")
+        raise ValueError("Unknown profile")
     start = time.perf_counter()
     from .levels import select_level
     selected_level = select_level(P, N, PL, A)
@@ -38,10 +38,12 @@ def infer(
         & (PL > 0.3)
     )
     angles = (np.arctan2(N[near, 1], N[near, 0]) + np.pi / 4) % (np.pi / 2) - np.pi / 4
-    aligned = angles[abs(angles) < np.radians(10)]
+    dominant = np.angle(np.mean(np.exp(4j * angles))) / 4 if len(angles) else 0.
+    residual = (angles - dominant + np.pi / 4) % (np.pi / 2) - np.pi / 4
+    aligned = dominant + residual[abs(residual) < np.radians(10)]
     if len(aligned) < 120:
         raise ValueError(
-            "Supporto Manhattan insufficiente: allineare le pareti principali agli assi XY."
+            "Insufficient support for two dominant orthogonal wall directions."
         )
     angle = float(np.median(aligned))
     c, s = np.cos(angle), np.sin(angle)
@@ -113,10 +115,14 @@ def infer(
     shape = np.ceil((UV.max(0) - lo + 1) / step).astype(int)
     if int(shape[0]) * int(shape[1]) > max_raster_cells:
         raise ValueError(
-            "Raster troppo esteso: ritagliare la nuvola o verificare le unità."
+            "Raster too large: crop the cloud or check units."
         )
     ceilpts = Q[horizontal & (abs(Q[:, 2] - zc) < 0.07), :2]
-    ij = np.floor((ceilpts - lo) / step).astype(int)
+    # Ceiling finishes can have several offsets within one level. Combine their
+    # support with the measured floor so omitted ceiling patches do not truncate
+    # whole wings of the building or leave walls projecting beyond the slab.
+    supportpts = Q[horizontal & ((abs(Q[:, 2] - zc) < .18) | (abs(Q[:, 2] - zf) < .10)), :2]
+    ij = np.floor((supportpts - lo) / step).astype(int)
     mask = np.zeros(shape, bool)
     mask[ij[:, 0], ij[:, 1]] = True
     mask = ndi.binary_closing(mask, structure=np.ones((5, 5)), border_value=0)
@@ -132,9 +138,9 @@ def infer(
 
     if env.is_empty:
         raise ValueError(
-            "Impronta del soffitto insufficiente; impossibile ricostruire ambienti attendibili."
+            "Insufficient ceiling footprint for room reconstruction."
         )
-    progress(55, "Proposte di parete e supporto fuzzy")
+    progress(55, "Wall proposals and fuzzy support")
     proposals = []
     for axis in [0, 1]:
         other = 1 - axis
@@ -231,7 +237,7 @@ def infer(
             continue
         faces.append(p)
     if not faces:
-        raise ValueError("Nessuna parete supera i controlli geometrici e fuzzy.")
+        raise ValueError("No wall passes the geometric and fuzzy checks.")
     used = set()
     walls = []
     for i, p in enumerate(faces):
@@ -310,8 +316,8 @@ def infer(
         w["endpoint_extension_m"] = [w["t0"] - old[0], w["t1"] - old[1]]
     walls = [w for w in walls if w["t1"] - w["t0"] >= 0.2]
     if not walls:
-        raise ValueError("Pareti degeneri dopo il completamento topologico.")
-    progress(65, "Segmentazione degli spazi provvisori")
+        raise ValueError("Degenerate walls after topology completion.")
+    progress(65, "Segmenting provisional spaces")
 
     def wallpoly(w):
         a, b = w["position"] - w["thickness"] / 2, w["position"] + w["thickness"] / 2
@@ -325,6 +331,11 @@ def infer(
     solid = unary_union(wallpolys)
     for w, p in zip(walls, wallpolys):
         w["polygon"] = mapping(p)
+
+    from .topology import structural_envelope
+    env, walls, envelope_status = structural_envelope(env, walls)
+    wallpolys = [geometry_shape(w["polygon"]) for w in walls]
+    solid = unary_union(wallpolys)
 
     # Candidate spaces are components of supported envelope minus closed wall solids.
     # Minor numerical closure only; all are labelled provisional in IFC.
@@ -386,9 +397,9 @@ def infer(
         )
 
     if not spaces:
-        raise ValueError("Nessuno spazio chiuso ricostruibile; IFC non generato.")
+        raise ValueError("No closed space could be reconstructed.")
     result = {
-        "version": "0.3",
+        "version": "0.5",
         "profile": profile,
         "status": "PILOT CLOUD-ONLY RECONSTRUCTION; REVIEW REQUIRED",
         "source_sha256": A["sha256"],
@@ -418,7 +429,7 @@ def infer(
         },
         "scope": "Main densely observed level; lower partial observations retained in diagnostics, not completed as rooms",
         "envelope": mapping(env),
-        "envelope_status": "CEILING-SUPPORT RASTER; MORPHOLOGICAL CLOSURE AND HOLE INFILL INFERRED",
+        "envelope_status": envelope_status,
         "fuzzy": {
             "version": "complete product-partition zero-order Sugeno with monotone singleton consequents",
             "equivalent_score_weights_V_P_C_F_L": [0.20, 0.20, 0.25, 0.15, 0.20],

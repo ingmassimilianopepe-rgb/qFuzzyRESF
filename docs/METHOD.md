@@ -1,85 +1,53 @@
-# Metodo implementato: Fuzzy-RESF v0.4
+# Method 0.5: unified reconstruction with bounded topology edits
 
-Questa implementazione trasferisce il prototipo numerico usato nei casi studio nel motore del plugin. È un metodo **pilota, geometrico e fuzzy**, con valori esperti fissi; non è un modello addestrato e non è dimostrata una superiorità generale sui metodi della letteratura.
+This is an expert-parameter pilot. The implementation uses only the selected cloud, explicit input scale and configured resource budgets. Reference IFCs are comparison material, never inference inputs. No learning, calibrated probabilities or benchmark superiority is claimed.
 
-## Modalità Interno
+## Shared preprocessing
 
-| Passaggio | Algoritmo e parametri | Risultato / limite |
-|---|---|---|
-| Coordinate | Ripristino `toGlobal3d` di CloudCompare, conversione esplicita in metri, origine numerica locale conservata | Coordinate globali ripristinate nel posizionamento IFC; nessun CRS inventato |
-| Riduzione | Voxel di 0,05 m, primo punto originale per cella | Nessuna media dei punti; elaborazione a blocchi |
-| Superfici locali | PCA dei 20 vicini, normale = autovettore del minimo autovalore | Planarità `(λ₂−λ₁)/max(λ₃,10⁻¹⁵)` con autovalori crescenti |
-| Livello | Istogramma Z da 0,02 m; valutazione delle coppie tra i primi sei picchi, altezza e sovrapposizione XY | Un livello principale, altezza ammessa 1,8–8 m; soffitto e pavimento devono essere osservati |
-| Orientamento | Mediana delle normali verticali ripiegate modulo 90°, limitata a ±10° intorno agli assi iniziali | Non è un estimatore generale dell'orientamento: preparare la nuvola in CloudCompare |
-| Proposte di parete | Due famiglie ortogonali; istogrammi da 0,025 m, filtro gaussiano σ=0,8, picchi multipli | Tolleranza angolare 12°, banda finale ±0,045 m, almeno 120 punti e 0,8 m di sviluppo |
-| Supporto fuzzy | Cinque membership e Sugeno monotono, soglia 0,70 | Indice di supporto esperto; non probabilità |
-| Controllo geometrico | Residuo P95 ≤0,05 m, estensione verticale ≥50% dell'altezza | Condiviso da tutti i profili sperimentali |
-| Spessori | Accoppiamento di facce parallele a 0,075–0,45 m, sovrapposizione >65% dello sviluppo massimo | Faccia singola: 0,12 m assunto e marcato come tale |
-| Topologia | Deduplicazione, chiusura di lacune ≤1,2 m, aggancio estremi entro 0,45 m | Può coprire porte reali; non è riconoscimento delle occlusioni |
-| Involucro in pianta | Supporto del soffitto, raster 0,10 m, closing 5×5, riempimento delle lacune | Impronta inferita; corti e vuoti possono essere riempiti erroneamente |
-| Spazi | Involucro meno pareti con fascia 0,025 m; distance transform e watershed con marcatori | Area ≥2 m²; nucleo dopo erosione 0,35 m; spazi provvisori |
-| BIM | Profili estrusi IFC4 con eventuali vuoti interni, gerarchia spaziale, quantità, evidenze | Modello parametrico editabile; non una mesh travestita da muro |
-| Controlli | Schema EXPRESS, tessellazione dei solidi, chiusura delle mesh, sovrapposizioni tra spazi | Coerenza formale e geometrica; accuratezza rispetto al rilievo da valutare separatamente |
+Stream LAS/LAZ or XYZ64, reject non-finite values, hash the input, restore metric coordinates and retain the global origin. Use one representative per 5 cm voxel; estimate PCA normals and planarity from 20 neighbours. An explicit voxel budget bounds memory. Detect dominant horizontal elevations and fourfold vertical-normal concentration.
 
-La concentrazione angolare a quattro lobi viene registrata come diagnostica; sotto 0,5 si segnala che l'ipotesi Manhattan è debole. Non viene usata per dichiarare corretta una ricostruzione o per eliminare automaticamente geometrie.
+## One workflow
 
-## Membership e score
+The GUI always requests `unified`. First evaluate candidate floor/ceiling pairs: height 1.8–8 m, at least 5 m² of horizontal occupancy on each plane, overlapping XY support, and no substantial intermediate plane. Ambiguous competing storeys do not create arbitrary room levels. If a pair and wall topology are usable, generate the main-level interior. Otherwise record a room-evidence decision and continue with supported wall/roof surfaces. Expected inference-domain failures are reported; file, dependency and IFC validation failures still stop publication.
 
-Definire `r(x;a,b)=clip((x−a)/(b−a),0,1)`.
+Additional surface candidates are merged into the same IFC building, suppressing the scanned ceiling as a duplicate roof and suppressing wall surfaces already explained by the interior footprint. Additional roofs must be above the selected ceiling by more than 0.35 m. An exterior wall must lie mostly outside the interior footprint and extend vertically beyond that level to be added. This conservative fusion does not reconstruct every attic, facade layer or multi-storey connection.
 
-| Membership | Misura della proposta | Trasformazione |
-|---|---|---|
-| V | Mediana `1−abs(nz)` | `r(V;0,75;0,95)` |
-| P | Mediana della planarità PCA | `r(P;0,25;0,65)` |
-| C | Frazione di 10 fasce verticali con ≥5 punti | `r(C;0,30;0,75)` |
-| F | Distanza dal pavimento del quantile Z al 2% | `1−r(gap;0,15;0,70)` |
-| L | Frazione di intervalli longitudinali da 0,10 m con ≥3 punti | `r(L;0,50;0,90)` |
+## Interior geometry
 
-Lo score è `S = 0,20 μV + 0,20 μP + 0,25 μC + 0,15 μF + 0,20 μL`.
+Estimate dominant orthogonal directions from vertical normals; the cloud no longer needs manual azimuth alignment to XY. Propose wall faces using 2.5 cm plane histograms, 4.5 cm face bands and 10 cm longitudinal bins. Bridge supported internal gaps up to 1.2 m; require at least 0.8 m length and half-level height evidence. Pair compatible faces 7.5–45 cm apart. Single-face thickness defaults to 12 cm and is explicitly inferred.
 
-È esattamente la semplificazione di una base completa Sugeno di ordine zero con 32 antecedenti binari, partizioni complementari a prodotto e conseguenti singleton uguali alla somma pesata degli antecedenti. È monotono rispetto alle cinque membership. Il codice usa direttamente la somma equivalente, senza simulare inutilmente 32 regole. Pesi e soglie non sono appresi o calibrati.
+The monotone zero-order Sugeno support reduces to weights `[0.20, 0.20, 0.25, 0.15, 0.20]` on verticality, planarity, relative height persistence, floor contact and continuity. Acceptance threshold: 0.70 plus geometric residual/height checks. The legacy seven-rule score is retained for research comparison.
 
-Il profilo `legacy` conserva la precedente combinazione normalizzata di sette attivazioni minime, riportata nel codice e nei report. `geometry_only` usa esclusivamente i vincoli geometrici. Le membership e lo score monotono vengono calcolati in tutti i profili; lo `score` delle pareti riportato nell'IFC resta l'indice monotono, mentre il profilo che determina l'accettazione è registrato nel progetto.
+Snap endpoints toward nearby perpendicular walls within 0.45 m. Form a common footprint from floor support within 10 cm and ceiling support within 18 cm of the fitted elevations. The wider ceiling band accommodates small finish offsets; it does not fit separate local ceiling heights. Prefer closed wall loops when they explain at least 70% of supported footprint. Otherwise regularize at 30 cm and snap outline vertices to nearby wall faces. Clip wall tips to this common footprint and resolve overlapping wall footprints. Floor and ceiling therefore use the same outline as the wall system.
 
-## Spazi interni
+Provisional spaces use masked distance-transform watershed. Space count is data-derived, not a target copied from a reference. Virtual boundaries remain explicit; they are not observed walls. This stage still approximates a single horizontal interior level.
 
-Il watershed usa il negativo della distanza dalle pareti sul dominio libero. I marcatori hanno distanza minima dalle pareti di 1 m, finestra di massimo locale 41 celle e separazione minima di 3 m. Ogni componente libera di almeno 2 m² riceve almeno un marcatore. Non viene imposto un numero di stanze e non viene letto un modello di riferimento.
+## Building surface geometry
 
-Le relazioni `IfcRelSpaceBoundary` sono di primo livello. Un bordo è associato a una parete candidata se tre punti del segmento distano al massimo 0,13 m dal relativo poligono. Gli altri bordi hanno `IfcVirtualElement`, senza geometria di parete inventata. I confini virtuali possono essere numerosi a causa della rasterizzazione e dell'assenza di chiusure osservate. Non sono confini termici certificati né relazioni di secondo livello.
+Normal-guided deterministic RANSAC (seed 48021) proposes vertical walls and roofs. Walls are fit vertically; roof normals require |nz| >= 0.60. Candidate roof points must be near the local top of a 30 cm XY column. Roof refinement uses robust inverse-square residual weights with an 8 mm floor, a 3.5 cm fitting band and 5° normal agreement to avoid averaging adjacent shallow slopes. Up to 28 wall planes and 18 roof planes are considered; connected patches can exceed those counts.
 
-## Selezione del livello nella v0.4
+The surface support score is a weighted monotone combination of planarity, P95 residual, normal alignment, area and raster coverage: `[0.25, 0.30, 0.20, 0.10, 0.15]`, threshold 0.65. A support score is not a semantic classifier. Roof candidates additionally need at least 8 nearby 30 cm wall-top cells with elevation agreement within 0.75 m; this rejects some sloping terrain and furniture. Sparse, heavily occluded roofs can consequently be omitted.
 
-Le quote sono adattate con la mediana dei punti orizzontali entro ±0,08 m dal picco. Ogni superficie occupa un insieme di celle XY da 0,20 m. Una coppia richiede altezza 1,8–8 m, almeno 5 m² di celle per superficie, intersezione pari almeno al 60% dell'insieme minore e al 35% del maggiore. Superfici intermedie con area ≥35% della minore e sovrapposizione ≥35% dell'intersezione invalidano la coppia. Lo score è il numero di celle condivise moltiplicato per la media geometrica dei due rapporti di sovrapposizione. Due intervalli di piano distinti con score entro il 15% provocano una richiesta di ritaglio. È un filtro geometrico, non una prova semantica di pavimento/soffitto: tavoli, terrazzi e rilievi incompleti possono ancora richiedere intervento manuale.
+Regularization and connection steps:
 
-## Modalità Esterno nella v0.4
+1. Remove small contour teeth by bounded opening/closing and simplification at 22 cm. Use a convex outline only if its area changes by at most 8% and its deviation is at most the declared tolerance; large recesses remain.
+2. Merge overlapping parallel roof observations within 30 cm and 4°. Paired faces estimate thickness; otherwise roof thickness is assumed 15 cm. Preserve the observed upper roof face and extrude downward vertically.
+3. Snap supported ridge/valley boundaries within 35 cm. Resolve roof footprint overlaps. Preserve measured eaves/overhangs instead of trimming roofs to walls.
+4. Reject wall fragments shorter than 0.60 m, lower than 1.40 m or with very low area coverage. Approximate remaining wall extents by vertical parametric strips. This fills some unobserved portions and can close real openings.
+5. Pair parallel wall faces up to 85 cm apart with angular, plan-overlap and height-overlap checks. Otherwise assume 20 cm thickness. These fixed expert limits require review on other building types.
+6. Intersect nearby wall endpoints within 50 cm; stabilize neighbouring bases only within 30 cm. Remove redundant plan overlaps and tiny slivers. Curved facades remain multiple planar segments.
+7. Trim wall solids under supported roof planes, favouring the roof with greatest measured footprint overlap. A clipping domain may extend at most 50 cm beyond the sampled roof outline. The roof itself is not extended by this operation. Use unbounded plane cuts when a roof covers the complete wall footprint, and finite parametric cutters for partial coverage.
+8. Use millimetre precision for geometric overlays to avoid zero-width numerical slivers. Record all joins, rejected candidates and clipping operations in the report.
 
-La nuova modalità non usa la coppia pavimento/soffitto e non impone assi XY alle facciate. Rimane necessaria Z verticale. Usa gli stessi voxel e normali PCA, poi:
+## IFC and verification
 
-1. **Proposte di piano** con RANSAC guidato dalle normali: seme 48021, massimo 16.000 punti e 96 normali candidate per iterazione; soglia iniziale 5 cm, due rifit PCA con banda 6 cm e accordo normale entro 12°. Budget: 28 piani verticali e 18 piani di copertura. Le componenti connesse possono produrre più elementi per piano.
-2. **Pareti candidate** da normali con |nz|<0,20. **Coperture candidate** da |nz|≥0,25, osservazioni entro 0,30 m dal massimo della colonna XY da 0,30 m e quota mediana del piano almeno pari al quantile Z 60% della nuvola. Sono criteri geometrici: terrazzi, terreno elevato e superfici di altri oggetti possono essere classificati erroneamente. Ritagliare un edificio.
-3. **Contorni nel piano locale**: raster da 0,15 m, closing 3×3, componenti da almeno 1,5 m² per pareti o 4 m² per falde, semplificazione 0,07 m. Espansione di 0,002 m per separare i contatti puntuali tra anelli, che genererebbero spigoli non-manifold nell'estrusione. I vuoti grandi sono conservati senza classificarli come finestre.
-4. **Supporto fuzzy monotono** con cinque membership e score equivalente a una base Sugeno completa: `S = 0,25 P + 0,30 R + 0,20 N + 0,10 A + 0,15 C`. Con `r(x;a,b)=clip((x-a)/(b-a),0,1)`: P=r(planarità;0,25;0,65), R=1-r(residuoP95;0,025;0,07), N=r(mediana accordo normali;0,90;0,99), A=r(area;1,5;12), C=r(copertura raster;0,40;0,90). Accettazione con score ≥0,65 e P95≤0,06 m. `geometry_only` rimuove solo la soglia fuzzy. Valori esperti, non calibrati sui sei benchmark.
-5. **IFC parametrico**: ogni componente diventa un profilo estruso nel piano misurato, con asse di estrusione normale alla superficie. `IfcWall` per pareti e `IfcRoof` per falde; spessori rispettivamente 0,20 e 0,15 m, **assunti e centrati sulla superficie osservata**. Contenimento nell'edificio, senza piani o stanze inventati. Le falde inclinate mantengono l'orientamento 3D.
+Write IFC4 extrusions and Boolean results, preserve metric global placement, and attach source/evidence/review properties. Interior spaces and first-level boundaries are exported only by the interior branch. Surface-only jobs do not invent rooms or storeys. Validate EXPRESS, triangulate elements and require closed meshes with positive volume before transactional publication. Interior spaces must not overlap.
 
-Ogni elemento ha evidenze, residui, score e richiesta di revisione. Il modello può contenere porzioni sovrapposte, non raccordate o mancanti: **non è un involucro chiuso certificato**, né un modello già pronto per computi o simulazioni energetiche. Lo schema IFC e la chiusura dei singoli solidi non validano la classificazione o la completezza dell'edificio.
+These checks distinguish **valid individual solids** from **a globally continuous building**. Connection diagnostics and footprint overlap checks are not a global manifold-envelope proof. Missing walls, genuine openings, steps between roofs, unsupported bases, sloped floors, thin objects and curved interfaces can remain unresolved. There is no automatic door/window/MEP reconstruction. Construction-ready geometry requires review.
 
-## Cosa rimane da sviluppare
+## Implementation references
 
-- Generalizzazione della modalità interna a orientamenti multipli e primitive curve.
-- Distinzione affidabile tra muri, arredi, facciate e superfici temporanee.
-- Visibilità/ray tracing con posizioni di scansione per modellare le occlusioni.
-- Aperture con sottrazioni `IfcOpeningElement`, porte e finestre.
-- Separazione automatica di più livelli, scale, coperture curve o complesse e impianti.
-- Topologia delle stanze validata e benchmark indipendente su tutti i casi studio.
-- Calibrazione dei pesi, stima dell'incertezza e confronto statistico con baseline a parità di input.
-
-La logica fuzzy non ricostruisce l'informazione assente: rende esplicito un criterio di supporto e accettazione. Le estensioni devono essere implementate e misurate prima di descriverle come funzionalità operative o più performanti.
-
-## Riferimenti tecnici
-
-- [CloudCompare: istruzioni di compilazione al commit usato](https://github.com/CloudCompare/CloudCompare/blob/001bfd04a13101bfee84a28a6eaa3c7a6338b526/BUILD.md).
-- [CloudCompare: conversione delle coordinate globali](https://github.com/CloudCompare/CloudCompare/blob/001bfd04a13101bfee84a28a6eaa3c7a6338b526/libs/qCC_db/include/ccShiftedObject.h).
-- [IfcOpenShell](https://github.com/IfcOpenShell/IfcOpenShell): costruzione, validazione e tessellazione IFC.
-- [scikit-image](https://github.com/scikit-image/scikit-image): watershed con marcatori.
-
-I riferimenti descrivono le infrastrutture impiegate; non costituiscono una validazione scientifica del metodo proposto.
+- [IfcOpenShell Boolean geometry API](https://docs.ifcopenshell.org/autoapi/ifcopenshell/api/geometry/add_boolean/index.html)
+- [IfcOpenShell Clipping utility](https://docs.ifcopenshell.org/autoapi/ifcopenshell/util/data/index.html)
+- [buildingSMART IFC4 IfcBooleanClippingResult](https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD1/HTML/schema/ifcgeometricmodelresource/lexical/ifcbooleanclippingresult.htm)
+- [Shapely geometry operations](https://shapely.readthedocs.io/en/stable/manual.html)

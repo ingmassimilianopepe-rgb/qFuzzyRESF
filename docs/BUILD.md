@@ -1,94 +1,57 @@
-# Installazione e compilazione
+# Build and installation
 
-## Compatibilità
+## Matching application and plugin
 
-Il plugin usa l'API Standard di **CloudCompare 2.14 / Qt 6**. La CI fissa il sorgente CloudCompare al commit `001bfd04a13101bfee84a28a6eaa3c7a6338b526`. Compilare applicazione e plugin insieme evita incompatibilità ABI. Non copiare la DLL in CloudCompare 2.13 / Qt 5 o in una build con compilatore/Qt differenti.
+Use the bundled application. The plugin targets CloudCompare 2.14 / Qt 6 at commit `001bfd04a13101bfee84a28a6eaa3c7a6338b526`. Do not copy its DLL to CloudCompare 2.13 / Qt 5 or an arbitrary build. Windows CI uses Visual Studio 2022 x64 and Qt 6.8.3 `msvc2022_64`; application, plugin, Qt, MSVC and OpenMP runtime files are packaged together.
 
-Il motore è incorporato come sorgente Python nelle risorse del plugin. Le librerie scientifiche si installano una volta in un ambiente Python esterno; non serve il plugin PythonRuntime di CloudCompare. Target Python verificato: **3.12 x64**.
+CI artifact name: `qFuzzyRESF-0.3.0-Windows-CloudCompare-001bfd0`. Artifacts are retained for 30 days. These are test builds, not signed stable installers. Python dependencies are installed separately. Linux native packages require compatible Ubuntu 24.04 Qt/OpenGL/LASzip system libraries.
 
-## Pacchetti CI
+## Python setup
 
-Nella scheda [Actions](https://github.com/ingmassimilianopepe-rgb/qFuzzyRESF/actions), aprire un workflow **riuscito** e scaricare l'artifact `qFuzzyRESF-0.2.0-Windows-CloudCompare-001bfd0` o Linux. Gli artifact hanno conservazione di 30 giorni. Su Windows il pacchetto contiene applicazione, plugin e runtime Qt della stessa build. Il pacchetto Windows include anche le DLL redistribuibili MSVC e OpenMP. Python e le sue dipendenze restano da installare.
+Install Python 3.12 x64 with the Python launcher. Extract the entire Windows ZIP, then double-click `INSTALL_qFuzzyRESF.cmd` beside CloudCompare.exe. It finds `backend/requirements.txt` from its own location, avoiding working-directory errors. The environment is `%LOCALAPPDATA%\qFuzzyRESF\.venv`; the existing environment and previously selected interpreter can be reused. The installer prints the complete `python.exe` path. Select it in the plugin if necessary.
 
-Questi pacchetti sono build di prova, non installer firmati o release stabili. L'avvio e il flusso grafico completo vanno ancora verificati su una postazione con interfaccia grafica. Su Linux il pacchetto richiede le librerie Qt/OpenGL e LASzip del sistema compatibile con il runner Ubuntu 24.04. Se estratto in una cartella diversa dal prefisso di compilazione, avviarlo dalla cartella estratta con:
+No PowerShell execution-policy change is needed. An optional `scripts/install_backend.ps1` is provided. Linux: `sh scripts/install_backend.sh` from a source checkout. Package installation needs access to PyPI; reconstruction itself is local.
 
-```bash
-LD_LIBRARY_PATH="$PWD/lib/cloudcompare${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./bin/CloudCompare
-```
+## Source build
 
-Per installare il motore Python su Linux usare gli script del repository, non inclusi nell'artifact nativo Linux.
-
-## Ambiente Python
-
-Su Windows fare doppio clic su `INSTALLA_qFuzzyRESF.cmd` accanto a CloudCompare.exe. Il launcher usa percorsi assoluti relativi alla propria posizione, quindi non dipende dalla cartella corrente del terminale. Python 3.12 x64 e il launcher `py` devono essere installati; serve accesso a PyPI. L'ambiente viene creato in `%LOCALAPPDATA%\qFuzzyRESF\.venv`, già usato nella procedura di assistenza. Il plugin lo riconosce automaticamente se non esiste un interprete valido salvato nelle preferenze.
-
-In alternativa, dalla cartella del progetto o del pacchetto Windows:
-
-```powershell
-# Windows: Python 3.12 x64 deve essere già installato
-.\scripts\install_backend.ps1
-```
-
-```bash
-# Linux: Python 3.12 con modulo venv
-sh scripts/install_backend.sh
-```
-
-Se una policy aziendale impedisce gli script, creare l'ambiente manualmente senza modificarla:
-
-```powershell
-$qfEnv = Join-Path $env:LOCALAPPDATA 'qFuzzyRESF\.venv'
-py -3.12 -m venv "$qfEnv"
-& "$qfEnv\Scripts\python.exe" -m pip install -r .\backend\requirements.txt
-& "$qfEnv\Scripts\python.exe" .\backend\run_pipeline.py --check
-```
-
-Nel dialogo selezionare `%LOCALAPPDATA%/qFuzzyRESF/.venv/Scripts/python.exe` (Windows, espandendo il percorso reale) o `.venv/bin/python` (Linux), senza argomenti aggiunti. Percorsi con spazi sono supportati: il plugin passa gli argomenti tramite `QProcess`, senza shell.
-
-## Compilazione da sorgente
-
-Installare CMake ≥3.20, compilatore C++17 e Qt 6. Su Windows usare Visual Studio 2022 x64 e Qt 6.8.3 `msvc2022_64`. Su Ubuntu 24.04:
+Requirements: CMake >=3.20, C++17 compiler and Qt 6. On Ubuntu 24.04:
 
 ```bash
 sudo apt install build-essential cmake qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools libqt6opengl6-dev libgl1-mesa-dev liblaszip-dev
-```
-
-Preparare il sorgente e i sottomoduli necessari:
-
-```bash
 git clone https://github.com/CloudCompare/CloudCompare.git
 cd CloudCompare
 git checkout 001bfd04a13101bfee84a28a6eaa3c7a6338b526
 git submodule update --init --recursive --depth 1 libs/qCC_db/extern/CCCoreLib libs/qPCP libs/CCAppCommon/QDarkStyleSheet plugins/core/IO/MeshIO
 git clone --branch feature/cloudcompare-ifc-tool https://github.com/ingmassimilianopepe-rgb/qFuzzyRESF.git plugins/private/qFuzzyRESF
-```
-
-Da questa cartella:
-
-```bash
-cmake -S . -B build -DPLUGIN_STANDARD_QFUZZYRESF=ON -DOPTION_BUILD_CCVIEWER=OFF -DCCCORELIB_USE_TBB=OFF -DCCCORELIB_USE_CGAL=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=../dist
+cmake -S . -B build -DPLUGIN_STANDARD_QFUZZYRESF=ON -DPLUGIN_IO_QLAS=ON -DOPTION_BUILD_CCVIEWER=OFF -DCCCORELIB_USE_TBB=OFF -DCCCORELIB_USE_CGAL=OFF -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=../dist
 cmake --build build --config Release --parallel 3
 cmake --install build --config Release
 ```
 
-Su Windows aggiungere alla configurazione, ad esempio, `-DCMAKE_PREFIX_PATH=C:/Qt/6.8.3/msvc2022_64`, poi eseguire `windeployqt --release` sull'eseguibile installato. Il nome della cartella del plugin deve essere **qFuzzyRESF**: il sistema di build di CloudCompare cerca la risorsa `qFuzzyRESF.qrc` in base a quel nome.
+The plugin directory must be named `qFuzzyRESF` because CloudCompare resolves its QRC by directory name. The Python engine is embedded in Qt resources; editing the extracted `backend` directory does **not** update an already compiled plugin DLL.
 
-I pacchetti CI includono il lettore LAS/LAZ (`PLUGIN_IO_QLAS=ON`). Su Linux la dipendenza è `liblaszip-dev`; su Windows la CI compila LASzip 3.5.0 dal commit `fa089bd8b2b4ca5631e199d257374c32a125f73f`, lo installa in `laszip-install` e aggiunge quella cartella a `CMAKE_PREFIX_PATH`. Per compatibilità con `FindLASzip` di CloudCompare, copiare anche `LASzip/include/laszip/laszip_common.h` direttamente in `laszip-install/include/laszip_common.h` dopo `cmake --install`: l'API 3.5 usa un include piatto quando `LASZIP_API_VERSION` non è definito. La CI verifica subito compilazione e linking di un piccolo consumer prima della build completa. Per includerlo nella compilazione manuale usare lo stesso procedimento e aggiungere `-DPLUGIN_IO_QLAS=ON`.
+For Windows, set `CMAKE_PREFIX_PATH` to Qt 6.8.3 and the LASzip install prefix, then run `windeployqt --release` on the installed executable. The full reproducible packaging procedure is in `.github/workflows/ci.yml`. It builds LASzip from `fa089bd8b2b4ca5631e199d257374c32a125f73f`; the `laszip_common.h` compatibility copy and a linking probe are included. Native tests enable `QFUZZYRESF_BUILD_SMOKE_TESTS`.
 
-La build minima non include tutti gli altri lettori opzionali di CloudCompare (ad esempio E57). Per questi formati compilare e abilitare il relativo plugin I/O seguendo le istruzioni ufficiali oppure convertire la nuvola in un formato già leggibile. Il motore standalone legge LAS/LAZ.
+For a relocated Linux artifact:
 
-## Problemi frequenti
+```bash
+LD_LIBRARY_PATH="$PWD/lib/cloudcompare${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./bin/CloudCompare
+```
 
-| Messaggio / sintomo | Azione |
+The minimal package includes LAS/LAZ I/O, not every optional CloudCompare reader. E57 and other formats may require building the corresponding I/O plugin or converting the input.
+
+## Troubleshooting
+
+| Symptom | Action |
 |---|---|
-| Plugin assente | Controllare compatibilità della build, opzione CMake e log plugin di CloudCompare |
-| Azione disabilitata | Selezionare una sola vera nuvola nell'albero DB, non un gruppo o una mesh |
-| Avvio Python fallito | Selezionare il percorso completo dell'interprete del venv |
-| `ModuleNotFoundError` | Installare `backend/requirements.txt` con quello stesso interprete |
-| Coppia pavimento/soffitto non supportata | Se il rilievo è esterno, scegliere Esterno. Per gli interni verificare Z verticale, unità e pavimento/soffitto sovrapposti in pianta; ritagliare un solo livello |
-| Limite voxel/raster | Ritagliare la nuvola; aumentare il limite voxel solo con RAM sufficiente |
-| Output esistente | Scegliere un nuovo nome; anche la cartella `.fuzzyresf` deve essere libera |
-| Errore di pubblicazione su volume remoto | Usare una cartella locale che supporti hard link (ad esempio NTFS/ext4); il salvataggio atomico non ripiega su copie incomplete |
-| Tante pareti omesse o confini virtuali | Verificare allineamento, densità, occlusioni e compatibilità con l'ipotesi Manhattan |
+| Plugin absent | Check matching application/Qt build and plugin loading log |
+| Action disabled | Select exactly one point cloud, not a group or mesh |
+| Python cannot start | Select the full environment interpreter path |
+| `ModuleNotFoundError` | Run the installer and select that same interpreter |
+| Requirements file missing | Extract the entire ZIP and run its root installer |
+| Rooms not generated | Read the evidence decision; verify units/Z and surveyed floor/ceiling support |
+| Multiple interior levels | Crop a level for room reconstruction; surface inference remains available |
+| Existing output | Choose a new IFC name |
+| Voxel budget exceeded | Crop unnecessary surroundings or raise the budget with sufficient RAM |
 
-Per una diagnosi conservare i quattro JSON accanto all'IFC e la versione del plugin. Il codice non carica la nuvola o il modello su servizi remoti.
+A manual desktop GUI run and independent IFC-editor review remain necessary before production use.

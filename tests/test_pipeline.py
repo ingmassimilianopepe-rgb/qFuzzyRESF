@@ -65,7 +65,7 @@ def test_existing_output_preserved(tmp_path, two_rooms):
     job = request(tmp_path, two_rooms)
     output = Path(job["output"])
     output.write_bytes(b"original IFC bytes")
-    with pytest.raises(ValueError, match="esistente"):
+    with pytest.raises(ValueError, match="already exists"):
         run(job)
     assert output.read_bytes() == b"original IFC bytes"
 

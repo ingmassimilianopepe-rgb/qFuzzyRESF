@@ -34,7 +34,7 @@ def test_invalid_height_reports_actual_distance():
 
 
 def test_multi_storey_ambiguity_requires_crop():
-    with pytest.raises(ValueError, match="Piu livelli"):
+    with pytest.raises(ValueError, match="Multiple plausible"):
         select_level(*horizontal_scene([(0, 0), (3, 0), (6, 0)]))
 
 
@@ -100,7 +100,7 @@ def test_sloped_roof_exterior_ifc_with_survey_coordinates(tmp_path):
     assert all(abs(s["inclination_from_horizontal_deg"] - np.degrees(np.arctan(.375))) < 1 for s in roofs)
     audit = json.loads((tmp_path / "Esterno.fuzzyresf/audit.json").read_text())
     assert np.allclose(audit["actual_min_m"], P.min(0))
-    assert all(e.Representation.Representations[0].RepresentationType == "SweptSolid"
+    assert all(e.Representation.Representations[0].RepresentationType in {"SweptSolid", "CSG"}
                for e in m.by_type("IfcElement"))
 
 

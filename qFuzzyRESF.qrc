@@ -8,6 +8,8 @@
   <file>backend/fuzzyresf/levels.py</file>
   <file>backend/fuzzyresf/exterior.py</file>
   <file>backend/fuzzyresf/exterior_ifc.py</file>
+  <file>backend/fuzzyresf/topology.py</file>
+  <file>backend/fuzzyresf/unified.py</file>
   <file>backend/run_pipeline.py</file>
   <file>info.json</file>
   <file>resources/icon.svg</file>

@@ -30,16 +30,16 @@
 FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     : QDialog(parent), m_cloud(cloud)
 {
-    setWindowTitle(tr("qFuzzyRESF 0.2.0 · dalla nuvola al BIM IFC"));
+    setWindowTitle(tr("qFuzzyRESF 0.3.0 · Point cloud to BIM IFC"));
     setModal(true);
     resize(750, 600);
     QSettings settings;
     settings.beginGroup("qFuzzyRESF");
     auto* layout = new QVBoxLayout(this);
-    auto* title = new QLabel(tr("Nuvola: %1 · %2 punti").arg(cloud->getName()).arg(cloud->size()));
+    auto* title = new QLabel(tr("Cloud: %1 · %2 points").arg(cloud->getName()).arg(cloud->size()));
     title->setTextFormat(Qt::PlainText);
     layout->addWidget(title);
-    auto* scope = new QLabel(tr("Metodo pilota v0.4. Interno: un livello con pavimento e soffitto rilevati, pareti ortogonali. Esterno: pareti planari e falde inclinate, senza stanze. Z deve essere verticale. Spessori e classificazioni richiedono verifica."));
+    auto* scope = new QLabel(tr("Unified reconstruction: connected walls, floors and roofs; rooms where interior evidence supports them. Z must be vertical. Curved walls are approximated by planar segments. Review inferred thicknesses and connections."));
     scope->setWordWrap(true);
     layout->addWidget(scope);
     auto* form = new QFormLayout;
@@ -57,56 +57,49 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     m_python->setObjectName("pythonPath");
     auto* pyRow = new QHBoxLayout;
     pyRow->addWidget(m_python);
-    auto* pyBrowse = new QPushButton(tr("Sfoglia…"));
+    auto* pyBrowse = new QPushButton(tr("Browse…"));
     pyRow->addWidget(pyBrowse);
     connect(pyBrowse, &QPushButton::clicked, this, [this] {
         if (m_busy) return;
-        const auto path = QFileDialog::getOpenFileName(this, tr("Interprete dell'ambiente Python"), m_python->text());
+        const auto path = QFileDialog::getOpenFileName(this, tr("Python environment interpreter"), m_python->text());
         if (!path.isEmpty()) m_python->setText(path);
     });
-    form->addRow(tr("Eseguibile Python"), pyRow);
+    form->addRow(tr("Python executable"), pyRow);
     m_output = new QLineEdit;
     m_output->setObjectName("outputPath");
     auto* outRow = new QHBoxLayout;
     outRow->addWidget(m_output);
-    auto* outBrowse = new QPushButton(tr("Salva come…"));
+    auto* outBrowse = new QPushButton(tr("Save as…"));
     outRow->addWidget(outBrowse);
     connect(outBrowse, &QPushButton::clicked, this, [this] {
         if (m_busy) return;
         QSettings config;
         auto folder = config.value("qFuzzyRESF/outputDir", QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)).toString();
-        auto path = QFileDialog::getSaveFileName(this, tr("Nuovo modello IFC"), folder + "/FuzzyRESF_BIM.ifc", "IFC (*.ifc)", nullptr, QFileDialog::DontConfirmOverwrite);
+        auto path = QFileDialog::getSaveFileName(this, tr("New IFC model"), folder + "/FuzzyRESF_BIM.ifc", "IFC (*.ifc)", nullptr, QFileDialog::DontConfirmOverwrite);
         if (!path.isEmpty()) {
             if (!path.endsWith(".ifc", Qt::CaseInsensitive)) path += ".ifc";
             m_output->setText(path);
         }
     });
-    form->addRow(tr("Nuovo file IFC"), outRow);
+    form->addRow(tr("New IFC file"), outRow);
     m_units = new QComboBox;
     m_units->setObjectName("sourceUnits");
-    m_units->addItem(tr("Metri"), 1.);
-    m_units->addItem(tr("Centimetri"), .01);
-    m_units->addItem(tr("Millimetri"), .001);
+    m_units->addItem(tr("Metres"), 1.);
+    m_units->addItem(tr("Centimetres"), .01);
+    m_units->addItem(tr("Millimetres"), .001);
     m_units->setCurrentIndex(settings.value("units", 0).toInt());
-    form->addRow(tr("Unità delle coordinate originali"), m_units);
-    m_mode = new QComboBox;
-    m_mode->setObjectName("reconstructionMode");
-    m_mode->addItem(tr("Interno — un piano e stanze provvisorie"), "interior");
-    m_mode->addItem(tr("Esterno — pareti e coperture, senza stanze"), "exterior");
-    m_mode->setCurrentIndex(settings.value("mode", 0).toInt());
-    form->addRow(tr("Modalità di ricostruzione"), m_mode);
+    form->addRow(tr("Original coordinate units"), m_units);
     m_profile = new QComboBox;
-    m_profile->addItem(tr("Fuzzy monotono (predefinito)"), "monotone");
-    m_profile->addItem(tr("Solo geometria (confronto sperimentale)"), "geometry_only");
-    m_profile->addItem(tr("Fuzzy legacy (solo Interno)"), "legacy");
-    form->addRow(tr("Profilo"), m_profile);
+    m_profile->addItem(tr("Monotone fuzzy (default)"), "monotone");
+    m_profile->addItem(tr("Geometry only (research comparison)"), "geometry_only");
+    form->addRow(tr("Profile"), m_profile);
     m_limit = new QSpinBox;
     m_limit->setRange(1, 20);
     m_limit->setValue(3);
-    m_limit->setSuffix(tr(" milioni"));
-    form->addRow(tr("Limite voxel (aumenta l'uso RAM)"), m_limit);
+    m_limit->setSuffix(tr(" million"));
+    form->addRow(tr("Voxel budget (higher uses more RAM)"), m_limit);
     layout->addLayout(form);
-    auto* note = new QLabel(tr("Il Global Shift/Scale di CloudCompare viene ripristinato. Il modello e i report sono elaborati localmente; scegliere un nome di uscita non ancora esistente."));
+    auto* note = new QLabel(tr("CloudCompare Global Shift/Scale is restored. Processing stays on this computer. Choose a new output filename."));
     note->setWordWrap(true);
     layout->addWidget(note);
     m_progress = new QProgressBar;
@@ -117,9 +110,9 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     layout->addWidget(m_log);
     auto* buttons = new QHBoxLayout;
     buttons->addStretch();
-    m_start = new QPushButton(tr("Genera IFC"));
+    m_start = new QPushButton(tr("Generate IFC"));
     m_start->setObjectName("generateIfc");
-    m_cancel = new QPushButton(tr("Chiudi"));
+    m_cancel = new QPushButton(tr("Close"));
     buttons->addWidget(m_start);
     buttons->addWidget(m_cancel);
     layout->addLayout(buttons);
@@ -130,7 +123,7 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     connect(&m_process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, &FuzzyDialog::finished);
     connect(&m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
-            log(tr("Avvio Python fallito: %1. Selezionare l'eseguibile dell'ambiente installato con scripts/install_backend.").arg(m_process.errorString()));
+            log(tr("Could not start Python: %1. Select the interpreter created by INSTALL_qFuzzyRESF.cmd.").arg(m_process.errorString()));
             setBusy(false);
             m_work.reset();
         }
@@ -151,9 +144,9 @@ void FuzzyDialog::setBusy(bool busy)
 {
     m_busy = busy;
     m_start->setEnabled(!busy);
-    for (QWidget* widget : QList<QWidget*>{m_python, m_output, m_units, m_profile, m_mode, m_limit})
+    for (QWidget* widget : QList<QWidget*>{m_python, m_output, m_units, m_profile, m_limit})
         widget->setEnabled(!busy);
-    m_cancel->setText(busy ? tr("Annulla") : tr("Chiudi"));
+    m_cancel->setText(busy ? tr("Cancel") : tr("Close"));
 }
 
 void FuzzyDialog::reject()
@@ -161,7 +154,7 @@ void FuzzyDialog::reject()
     if (!m_busy) { QDialog::reject(); return; }
     if (m_cancelled) return;
     m_cancelled = true;
-    log(tr("Annullamento in corso…"));
+    log(tr("Cancelmento in corso…"));
     m_process.terminate();
     QTimer::singleShot(3000, this, [this] {
         if (m_cancelled && m_process.state() != QProcess::NotRunning) m_process.kill();
@@ -173,20 +166,20 @@ bool FuzzyDialog::prepareJob(QString& requestPath)
     const auto destination = QFileInfo(m_output->text()).absoluteFilePath();
     const QFileInfo output(destination);
     if (output.suffix().compare("ifc", Qt::CaseInsensitive) != 0 || !output.dir().exists())
-        throw std::runtime_error("Scegliere un file .ifc in una cartella esistente.");
+        throw std::runtime_error("Choose an .ifc file in an existing folder.");
     if (output.exists() || QFileInfo(output.dir().filePath(output.completeBaseName() + ".fuzzyresf")).exists())
-        throw std::runtime_error("Output già esistente: scegliere un nuovo nome.");
+        throw std::runtime_error("Output already exists: choose a new filename.");
     m_work = std::make_unique<QTemporaryDir>(output.absolutePath() + "/.qfuzzyresf-job-XXXXXX");
-    if (!m_work->isValid()) throw std::runtime_error("Impossibile creare la cartella temporanea.");
-    const QStringList files = {"run_pipeline.py", "fuzzyresf/__init__.py", "fuzzyresf/cli.py", "fuzzyresf/cloud.py", "fuzzyresf/inference.py", "fuzzyresf/ifc.py", "fuzzyresf/levels.py", "fuzzyresf/exterior.py", "fuzzyresf/exterior_ifc.py"};
+    if (!m_work->isValid()) throw std::runtime_error("Could not create the temporary folder.");
+    const QStringList files = {"run_pipeline.py", "fuzzyresf/__init__.py", "fuzzyresf/cli.py", "fuzzyresf/cloud.py", "fuzzyresf/inference.py", "fuzzyresf/ifc.py", "fuzzyresf/levels.py", "fuzzyresf/exterior.py", "fuzzyresf/exterior_ifc.py", "fuzzyresf/topology.py", "fuzzyresf/unified.py"};
     QDir().mkpath(m_work->filePath("fuzzyresf"));
     for (const auto& file : files) {
         QFile resource(":/CC/plugin/qFuzzyRESF/backend/" + file);
-        if (!resource.copy(m_work->filePath(file))) throw std::runtime_error("Estrazione del motore Python fallita.");
+        if (!resource.copy(m_work->filePath(file))) throw std::runtime_error("Could not extract the Python engine.");
     }
     QFile binary(m_work->filePath("selected.xyz64"));
-    if (!binary.open(QIODevice::WriteOnly)) throw std::runtime_error("Impossibile scrivere la nuvola temporanea.");
-    log(tr("Esportazione della nuvola selezionata con coordinate globali…"));
+    if (!binary.open(QIODevice::WriteOnly)) throw std::runtime_error("Could not write the temporary point cloud.");
+    log(tr("Exporting the selected cloud in global coordinates…"));
     const unsigned count = m_cloud->size();
     for (unsigned start = 0; start < count; start += 16384) {
         QByteArray block;
@@ -197,15 +190,15 @@ bool FuzzyDialog::prepareJob(QString& requestPath)
         for (unsigned i = start; i < std::min(count, start + 16384); ++i) {
             const CCVector3d point = m_cloud->toGlobal3d(*m_cloud->getPoint(i));
             if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
-                throw std::runtime_error("Coordinate NaN/Inf: pulire la nuvola.");
+                throw std::runtime_error("NaN/Inf coordinates: clean the cloud first.");
             data << point.x << point.y << point.z;
         }
-        if (binary.write(block) != block.size()) throw std::runtime_error("Scrittura della nuvola fallita (spazio disco?).");
+        if (binary.write(block) != block.size()) throw std::runtime_error("Cloud write failed (check free disk space).");
         m_progress->setValue(static_cast<int>(100. * std::min(count, start + 16384) / count));
         QCoreApplication::processEvents();
         if (m_cancelled) return false;
     }
-    if (!binary.flush()) throw std::runtime_error("Salvataggio della nuvola fallito.");
+    if (!binary.flush()) throw std::runtime_error("Cloud save failed.");
     binary.close();
     const auto& shift = m_cloud->getGlobalShift();
     QJsonObject job{
@@ -214,7 +207,7 @@ bool FuzzyDialog::prepareJob(QString& requestPath)
         {"output", destination}, {"work_dir", m_work->path()},
         {"meters_per_unit", m_units->currentData().toDouble()},
         {"profile", m_profile->currentData().toString()},
-        {"mode", m_mode->currentData().toString()},
+        {"mode", "unified"},
         {"limits", QJsonObject{{"max_voxels", m_limit->value() * 1000000}}},
         {"cloudcompare", QJsonObject{{"global_shift", QJsonArray{shift.x, shift.y, shift.z}}, {"global_scale", m_cloud->getGlobalScale()}, {"export_coordinates", "GLOBAL"}}}
     };
@@ -222,7 +215,7 @@ bool FuzzyDialog::prepareJob(QString& requestPath)
     QFile request(requestPath);
     const auto bytes = QJsonDocument(job).toJson();
     if (!request.open(QIODevice::WriteOnly) || request.write(bytes) != bytes.size())
-        throw std::runtime_error("Scrittura del job fallita.");
+        throw std::runtime_error("Could not write the job.");
     return true;
 }
 
@@ -238,10 +231,9 @@ void FuzzyDialog::start()
         QSettings settings;
         settings.setValue("qFuzzyRESF/python", m_python->text().trimmed());
         settings.setValue("qFuzzyRESF/units", m_units->currentIndex());
-        settings.setValue("qFuzzyRESF/mode", m_mode->currentIndex());
         settings.setValue("qFuzzyRESF/outputDir", QFileInfo(m_output->text()).absolutePath());
         m_progress->setValue(0);
-        log(tr("Avvio motore locale. Le dipendenze devono essere installate nell'interprete selezionato."));
+        log(tr("Starting the local engine. Dependencies must be installed in the selected Python environment."));
         m_process.setWorkingDirectory(m_work->path());
         auto environment = QProcessEnvironment::systemEnvironment();
         environment.insert("PYTHONUTF8", "1");
@@ -272,7 +264,7 @@ void FuzzyDialog::readOutput()
         } else if (type == "result") {
             m_reportedPath = event.value("output").toString();
             const auto counts = event.value("counts").toObject();
-            log(tr("IFC validato: %1 pareti, %2 falde, %3 spazi provvisori.\nReport: %4")
+            log(tr("IFC validated: %1 walls, %2 roof surfaces, %3 provisional spaces.\nReports: %4")
                 .arg(counts.value("IfcWall").toInt()).arg(counts.value("IfcRoof").toInt()).arg(counts.value("IfcSpace").toInt())
                 .arg(event.value("diagnostics").toString()));
         } else if (event.contains("message")) {
@@ -289,10 +281,10 @@ void FuzzyDialog::finished(int code, QProcess::ExitStatus status)
     readOutput();
     if (code == 0 && status == QProcess::NormalExit && QFileInfo::exists(m_reportedPath)) {
         m_resultPath = m_reportedPath;
-        log(tr("Salvato: %1").arg(m_resultPath));
+        log(tr("Saved: %1").arg(m_resultPath));
         m_progress->setValue(100);
     } else {
-        log(m_cancelled ? tr("Elaborazione annullata.") : tr("Elaborazione non completata (codice %1). Consultare il messaggio precedente.").arg(code));
+        log(m_cancelled ? tr("Processing cancelled.") : tr("Processing failed (code %1). See the preceding message.").arg(code));
     }
     setBusy(false);
     m_work.reset();

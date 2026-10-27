@@ -1,62 +1,49 @@
-# qFuzzyRESF — dalla nuvola di punti al BIM IFC
+# qFuzzyRESF — point cloud to BIM IFC
 
-Plugin **Standard C++/Qt per CloudCompare 2.14 / Qt 6**, con motore Python locale.
+**Version 0.3.0 · pilot method 0.5.** A native C++/Qt plugin for CloudCompare 2.14 / Qt 6, using a local Python engine. The interface, installer messages and reports are in English.
 
-**Versione software 0.2.0 · metodo pilota 0.4.** Due modalità esplicite:
+## What changed
 
-| Modalità | Dati richiesti | IFC prodotto |
-|---|---|---|
-| Interno | Un livello con pavimento e soffitto rilevati; pareti prevalentemente ortogonali, allineate a XY entro ±10° | Pareti, pavimento, soffitto e spazi provvisori |
-| Esterno | Rilievo di un edificio con facciate planari e coperture piane o inclinate; Z verticale | Porzioni di parete e falde candidate, estruse nei rispettivi piani; nessuna stanza o livello inventato |
+One **Generate IFC** workflow replaces the Interior/Exterior menu. The engine evaluates floor/ceiling evidence, reconstructs supported interior spaces, and combines these with additional observed building surfaces in one IFC. It also runs when only building surfaces are supported, recording why rooms could not be generated.
 
-Il modello esterno è **parziale**: i singoli solidi sono chiusi, ma non costituiscono necessariamente un involucro continuo. Le superfici non sono raccordate, gli spessori sono assunti e le aperture non sono classificate. Il supporto fuzzy non è una probabilità calibrata. Non è dimostrata una superiorità rispetto alla letteratura.
+The geometry now uses regularized boundaries, paired wall faces, bounded wall joins, roof-face deduplication, shared roof ridges where supported, and parametric wall trimming under roofs. Floor and ceiling outlines use both observed horizontal surfaces and the wall graph, reducing raster teeth and wall tips outside the slab. Genuine measured roof overhangs are retained.
 
-## Utilizzo in CloudCompare
+This remains a **research prototype**. Individually valid solids and recorded connections do not guarantee a globally closed, complete building. Curved walls are approximated by planar segments. The main interior level uses predominantly orthogonal walls and horizontal floor/ceiling evidence; multiple storeys, curved room boundaries, mezzanines and fully automatic door/window classification are not solved. Fuzzy scores are expert support indices, not calibrated probabilities. No superiority over published methods has been demonstrated.
 
-1. Estrarre **tutto** il pacchetto Windows in una nuova cartella. Usare il CloudCompare incluso: non copiare la DLL in una build Qt 5 o diversa.
-2. Con Python **3.12 x64** installato, fare doppio clic su **INSTALLA_qFuzzyRESF.cmd** nella cartella CloudCompare. Lo script trova le dipendenze usando il proprio percorso e prepara `%LOCALAPPDATA%\qFuzzyRESF\.venv`. Se questo ambiente è già stato installato, viene riutilizzato. Non serve modificare la policy PowerShell. Su Linux: `sh scripts/install_backend.sh`.
-3. Avviare il CloudCompare incluso, aprire la nuvola e selezionarla nell'albero DB.
-4. Aprire **Plugins → qFuzzyRESF**. Il Python già configurato viene conservato; altrimenti il plugin cerca l'ambiente installato. Controllare il campo **Eseguibile Python**.
-5. Scegliere le unità originali, la modalità **Interno** o **Esterno**, il profilo fuzzy monotono e un nuovo nome `.ifc`. Per `point cloud building.las`, scegliere **Esterno** e **Metri**.
-6. Premere **Genera IFC**, poi verificare il risultato in un editor IFC. Gli spazi interni restano candidati da validare.
+## Windows: quick start
 
-Il plugin ripristina Global Shift/Scale di CloudCompare e invia le coordinate globali al motore in float64. L'elaborazione resta sul computer. Servono spazio temporaneo di circa **24 byte per punto**, oltre agli output, e RAM proporzionata ai voxel; il limite predefinito è 3 milioni. L'annullamento interrompe il processo; un IFC non validato non viene pubblicato. I file esistenti non vengono sovrascritti.
+1. Extract **the whole ZIP** to a new folder. Start the bundled `CloudCompare.exe`; do not place the DLL into a different CloudCompare build.
+2. If Python dependencies are not already installed, install Python **3.12 x64** with its `py` launcher, then double-click **INSTALL_qFuzzyRESF.cmd** beside CloudCompare.exe. It locates its requirements independently of the terminal's working folder and creates/reuses `%LOCALAPPDATA%\qFuzzyRESF\.venv`.
+3. Open the cloud and select exactly one point cloud in the DB tree.
+4. Open **Plugins → qFuzzyRESF: Generate BIM IFC**. Confirm the title shows **0.3.0**. The previously configured Python interpreter is retained.
+5. Select the original coordinate units, **Monotone fuzzy**, and a new `.ifc` filename. Click **Generate IFC**. There is no Interior/Exterior selector.
+6. Review the IFC in an IFC viewer and inspect the generated reports, especially inferred extents, thicknesses and virtual space boundaries.
 
-## Output
+The existing Python environment can be reused. Global Shift/Scale is restored before export. Processing stays on the computer; temporary XYZ64 export needs about 24 bytes per point plus output space. The default voxel budget is 3 million and can be raised if RAM permits. Cancellation stops the child process. Existing files are never overwritten, and failed validation never publishes a partial IFC.
 
-- `nome.ifc`: IFC4 con profili estrusi modificabili e proprietà `ScanToBIM_Evidence`. Interno: `IfcWall`, `IfcSlab`, `IfcCovering`, `IfcSpace` e confini di primo livello. Esterno: `IfcWall` e `IfcRoof`, senza `IfcSpace` o piani non osservati.
-- `nome.fuzzyresf/audit.json`: input, hash SHA-256, scala, origine e diagnostica geometrica.
-- `nome.fuzzyresf/inference.json`: proposte, membership, score, pareti e poligoni degli spazi.
-- `nome.fuzzyresf/validation.json`: controllo schema EXPRESS, triangolazione/chiusura dei solidi, sovrapposizione degli spazi e confini virtuali.
-- `nome.fuzzyresf/summary.json`: versioni delle dipendenze, tempi, conteggi e avvertenze.
+## Outputs
 
-Un IFC valido descrive la coerenza formale del file: **non certifica la corrispondenza dell'edificio ricostruito al fabbricato reale**. I confini virtuali non rappresentano pareti osservate. Nessun modello BIM di riferimento viene usato per la ricostruzione.
+- `name.ifc`: IFC4 parametric swept solids and Boolean trimming; evidence properties on reconstructed elements.
+- `name.fuzzyresf/audit.json`: input SHA-256, coordinates, unit conversion and sampling evidence.
+- `inference.json`: accepted/rejected proposals, fuzzy support, connection edits and room decisions.
+- `validation.json`: EXPRESS validation, element mesh closure, positive volume, space overlaps and topology diagnostics.
+- `summary.json`: counts, warnings, dependency versions and runtime.
 
-## Esecuzione senza interfaccia
+An IFC reference is **never an inference input**. A visually cleaner model can contain inferred completion and still require geometric/semantic review. Missing room evidence is reported, not replaced by an arbitrary room layout.
+
+## Command line
 
 ```bash
 python backend/run_pipeline.py --check
-python backend/run_pipeline.py --input edificio.las --output edificio.ifc --meters-per-unit 1 --mode exterior
+python backend/run_pipeline.py --input building.las --output building.ifc --meters-per-unit 1
 ```
 
-Sono supportati LAS/LAZ e il formato di scambio XYZ64 del plugin. Gli altri formati vanno aperti con CloudCompare. Per un confronto controllato: `--profile geometry_only`, `--profile legacy`, `--profile monotone`. Nella modalità interna i tre profili condividono le proposte geometriche. La modalità esterna supporta `monotone` e `geometry_only`; `legacy` è rifiutato. Se omesso, `--mode` mantiene `interior` per compatibilità.
+LAS, LAZ and plugin XYZ64 are supported. Other formats can be imported through the appropriate CloudCompare I/O plugin. `--mode unified` is the default. `--mode interior` and `--mode exterior` remain CLI-only research/compatibility options. `--profile geometry_only` supplies an ablation; `legacy` is retained for interior research only.
 
-## Documentazione e test
+See [Build and installation](docs/BUILD.md), [Method and limitations](docs/METHOD.md), [Job contract](docs/CONTRACT.md), and [Validation](docs/VALIDATION.md).
 
-- [Installazione e compilazione](docs/BUILD.md)
-- [Algoritmo, parametri e limiti](docs/METHOD.md)
-- [Contratto JSON e annullamento](docs/CONTRACT.md)
-- [Verifica sperimentale](docs/VALIDATION.md)
+## Authors and licence
 
-```bash
-python -m pip install -r backend/requirements.txt
-python -m pytest -q
-```
+Massimiliano Pepe and Donato Palumbo — Department of Engineering and Geology, “G. d’Annunzio” University of Chieti-Pescara. Contact: massimiliano.pepe@unich.it.
 
-La CI verifica il motore su Linux/Windows e compila CloudCompare con il plugin contro un commit fissato. I pacchetti includono il lettore LAS/LAZ di CloudCompare. I pacchetti di prova sono scaricabili dagli **Artifacts** del workflow riuscito; non sono release stabili e richiedono comunque l'ambiente Python.
-
-## Autori e licenza
-
-Massimiliano Pepe e Donato Palumbo — Department of Engineering and Geology, “G. d’Annunzio” University of Chieti-Pescara. Corrispondenza: massimiliano.pepe@unich.it.
-
-GPL-3.0-or-later: vedere [LICENSE](LICENSE). Le dipendenze mantengono le rispettive licenze. Non sono inclusi dati dei casi studio o modelli BIM di riferimento.
+GPL-3.0-or-later: [LICENSE](LICENSE). Dependencies retain their own licences. User point clouds and reference models are not included.

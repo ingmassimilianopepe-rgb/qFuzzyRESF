@@ -31,7 +31,7 @@ int main(int argc, char** argv)
     if (!plugin) { std::cerr << loader.errorString().toStdString(); return 3; }
     const auto actions = plugin->getActions();
     if (actions.size() != 1 || actions.front()->isEnabled()) return 4;
-    ccPointCloud cloud("Due stanze · test nativo");
+    ccPointCloud cloud("Two rooms · native test");
     if (!cloud.reserve(140000)) return 5;
     for (int x = 0; x <= 200; ++x)
         for (int y = 0; y <= 125; ++y)
@@ -57,7 +57,7 @@ int main(int argc, char** argv)
     dialog.findChild<QLineEdit*>("pythonPath")->setText(QString::fromLocal8Bit(argv[2]));
     dialog.findChild<QLineEdit*>("outputPath")->setText(output);
     dialog.findChild<QComboBox*>("sourceUnits")->setCurrentIndex(2);
-    dialog.findChild<QComboBox*>("reconstructionMode")->setCurrentIndex(0);
+    if (dialog.findChild<QComboBox*>("reconstructionMode")) return 18;
     auto* start = dialog.findChild<QPushButton*>("generateIfc");
     int outcome = 9;
     bool started = false;
@@ -87,12 +87,29 @@ int main(int argc, char** argv)
         || std::abs(low[2].toDouble() - 100.) > .01) return 14;
     std::cout << "Plugin loaded; selection and Qt-to-IFC bridge passed: 5 walls, 2 spaces.\n";
     timer.stop();
-    FuzzyDialog exterior(&cloud, nullptr);
-    const auto extOutput = folder.filePath("Esterno.ifc");
+    ccPointCloud shell("Sloped roof shell");
+    if (!shell.reserve(150000)) return 19;
+    for (int x = 0; x <= 160; ++x)
+        for (int y = 0; y <= 100; ++y) {
+            const float xx=x*.05f, yy=y*.05f;
+            const float zz=3.f+.375f*(4.f-std::abs(xx-4.f));
+            shell.addPoint(CCVector3(xx,yy,zz));
+        }
+    for (const float y : {0.f,5.f})
+        for (int x=0;x<=160;++x)
+            for (int z=0;z<=90;++z) {
+                const float xx=x*.05f, zz=z*.05f;
+                if (zz<=3.f+.375f*(4.f-std::abs(xx-4.f))) shell.addPoint(CCVector3(xx,y,zz));
+            }
+    for (const float x : {0.f,8.f})
+        for (int y=0;y<=100;++y)
+            for (int z=0;z<=60;++z) shell.addPoint(CCVector3(x,y*.05f,z*.05f));
+    FuzzyDialog exterior(&shell, nullptr);
+    const auto extOutput = folder.filePath("Shell.ifc");
     exterior.findChild<QLineEdit*>("pythonPath")->setText(QString::fromLocal8Bit(argv[2]));
     exterior.findChild<QLineEdit*>("outputPath")->setText(extOutput);
-    exterior.findChild<QComboBox*>("sourceUnits")->setCurrentIndex(2);
-    exterior.findChild<QComboBox*>("reconstructionMode")->setCurrentIndex(1);
+    exterior.findChild<QComboBox*>("sourceUnits")->setCurrentIndex(0);
+    if (exterior.findChild<QComboBox*>("reconstructionMode")) return 20;
     auto* extStart = exterior.findChild<QPushButton*>("generateIfc");
     bool extStarted = false;
     outcome = 15;
@@ -109,12 +126,12 @@ int main(int argc, char** argv)
     exterior.show();
     app.exec();
     if (outcome != 0) return outcome;
-    QFile extFile(folder.filePath("Esterno.fuzzyresf/summary.json"));
+    QFile extFile(folder.filePath("Shell.fuzzyresf/summary.json"));
     if (!extFile.open(QIODevice::ReadOnly)) return 16;
     const auto extSummary = QJsonDocument::fromJson(extFile.readAll()).object();
     const auto extCounts = extSummary.value("counts").toObject();
-    if (extSummary.value("mode").toString() != "exterior" || extCounts.value("IfcSpace").toInt() != 0
+    if (extSummary.value("mode").toString() != "unified" || extCounts.value("IfcSpace").toInt() != 0
         || extCounts.value("IfcRoof").toInt() < 1 || extCounts.value("IfcWall").toInt() < 4) return 17;
-    std::cout << "Exterior Qt-to-IFC bridge passed: walls and roof, zero invented rooms.\n";
+    std::cout << "Unified shell-to-IFC bridge passed: walls and sloped roof, no unsupported rooms.\n";
     return 0;
 }

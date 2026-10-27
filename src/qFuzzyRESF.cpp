@@ -18,8 +18,8 @@ void qFuzzyRESF::onNewSelection(const ccHObject::Container& selected)
 QList<QAction*> qFuzzyRESF::getActions()
 {
     if (!m_action) {
-        m_action = new QAction(getIcon(), tr("qFuzzyRESF: genera BIM IFC…"), this);
-        m_action->setToolTip(tr("Ricostruisce pareti e spazi provvisori dalla nuvola selezionata"));
+        m_action = new QAction(getIcon(), tr("qFuzzyRESF: Generate BIM IFC…"), this);
+        m_action->setToolTip(tr("Reconstruct connected building elements and supported spaces from the selected cloud"));
         m_action->setEnabled(false);
         connect(m_action, &QAction::triggered, this, &qFuzzyRESF::run);
     }
@@ -35,5 +35,5 @@ void qFuzzyRESF::run()
     FuzzyDialog dialog(cloud, m_app->getMainWindow());
     dialog.exec();
     if (!dialog.resultPath().isEmpty())
-        m_app->dispToConsole(tr("[qFuzzyRESF] IFC salvato: %1 — ambienti provvisori da verificare").arg(dialog.resultPath()));
+        m_app->dispToConsole(tr("[qFuzzyRESF] IFC saved: %1 — review inferred geometry and provisional rooms").arg(dialog.resultPath()));
 }

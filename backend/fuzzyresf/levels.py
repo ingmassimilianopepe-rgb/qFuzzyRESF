@@ -44,16 +44,16 @@ def select_level(P, N, PL, audit):
         if len(ranked) == 2:
             origin_z = audit.get('coordinate_origin_m', [0, 0, 0])[2]
             heights = sorted(s['z'] + origin_z for s in ranked)
-            detail = (f' Due picchi principali: {heights[0]:.3f} e {heights[1]:.3f} m; '
-                      f'distanza {heights[1] - heights[0]:.3f} m.')
-        raise ValueError('Nessuna coppia pavimento/soffitto supportata: servono altezza '
-                         '1.8–8 m e superfici sovrapposte in pianta.' + detail +
-                         ' Per un rilievo esterno scegliere la modalita Esterno; '
-                         'per gli interni ritagliare un solo livello con pavimento e soffitto rilevati.')
+            detail = (f' Two dominant elevations: {heights[0]:.3f} and {heights[1]:.3f} m; '
+                      f'separation {heights[1] - heights[0]:.3f} m.')
+        raise ValueError('No supported floor/ceiling pair: requires a '
+                         '1.8–8 m height and overlapping plan evidence.' + detail +
+                         ' Building surfaces can still be reconstructed; '
+                         'rooms require a surveyed floor and ceiling on one level.')
     best = pairs[0]
     for other in pairs[1:]:
         disjoint = (other['ceiling_z'] <= best['floor_z'] + 0.2
                     or other['floor_z'] >= best['ceiling_z'] - 0.2)
         if disjoint and other['score'] >= 0.85 * best['score']:
-            raise ValueError('Piu livelli interni plausibili: ritagliare un solo piano e riprovare.')
+            raise ValueError('Multiple plausible interior levels: crop one storey for room reconstruction.')
     return best

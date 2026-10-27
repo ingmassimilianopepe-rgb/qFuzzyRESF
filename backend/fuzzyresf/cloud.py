@@ -16,7 +16,7 @@ CHUNK = 250_000
 def chunks(path, fmt):
     if fmt == "xyz64":
         if path.stat().st_size % 24:
-            raise ValueError("XYZ64 troncato: servono triple float64 little-endian.")
+            raise ValueError("Truncated XYZ64: expected little-endian float64 triples.")
         with path.open("rb") as handle:
             while True:
                 points = np.fromfile(handle, dtype="<f8", count=CHUNK * 3)
@@ -31,7 +31,7 @@ def chunks(path, fmt):
                 yield np.column_stack((points.x, points.y, points.z))
     else:
         raise ValueError(
-            "Formato non supportato: usare LAS/LAZ o esportare da CloudCompare."
+            "Unsupported format: use LAS/LAZ or export through CloudCompare."
         )
 
 
@@ -44,33 +44,33 @@ def analyse(path, fmt, meters_per_unit, max_voxels, progress, expected_count=Non
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(8 * 1024 * 1024), b""):
             digest.update(block)
-    progress(5, "Controllo coordinate e unità")
+    progress(5, "Checking coordinates and units")
     for points in chunks(path, fmt):
         points *= meters_per_unit
         if not np.isfinite(points).all():
             raise ValueError(
-                "La nuvola contiene coordinate NaN/Inf; pulirla prima di proseguire."
+                "The cloud contains NaN/Inf coordinates; clean it before continuing."
             )
         count += len(points)
         low = np.minimum(low, points.min(0))
         high = np.maximum(high, points.max(0))
     if count < 500:
-        raise ValueError("Nuvola insufficiente: almeno 500 punti richiesti.")
+        raise ValueError("Insufficient cloud: at least 500 points are required.")
     if expected_count is not None and count != expected_count:
         raise ValueError(
-            "Il conteggio punti non corrisponde al contratto di esportazione."
+            "Point count does not match the export contract."
         )
     extent = high - low
     if not np.isfinite(extent).all() or np.any(extent > 10000):
         raise ValueError(
-            "Estensione eccessiva: verificare unità e ritagliare un edificio."
+            "Excessive extent: check units and crop to one building."
         )
     # Keep metric arithmetic close to origin while storing the exact world offset.
     origin = np.floor(low)
     local_low = low - origin
     dims = np.ceil(extent / 0.05).astype(np.int64) + 1
     if math.prod(map(int, dims)) >= np.iinfo(np.int64).max:
-        raise ValueError("Griglia voxel oltre il limite int64.")
+        raise ValueError("Voxel grid exceeds the int64 limit.")
     keys = np.empty(0, dtype=np.int64)
     representatives = np.empty((0, 3), dtype=np.float64)
     processed = 0
@@ -82,7 +82,7 @@ def analyse(path, fmt, meters_per_unit, max_voxels, progress, expected_count=Non
         unseen = ~np.isin(new_keys, keys, assume_unique=True)
         if len(keys) + int(unseen.sum()) > max_voxels:
             raise ValueError(
-                f"Limite di {max_voxels:,} voxel superato. Ritagliare un livello o aumentare il limite con RAM adeguata."
+                f"Voxel budget of {max_voxels:,} exceeded. Crop the cloud or raise the budget if RAM permits."
             )
         joined = np.concatenate((keys, new_keys[unseen]))
         order = np.argsort(joined)
@@ -91,9 +91,9 @@ def analyse(path, fmt, meters_per_unit, max_voxels, progress, expected_count=Non
         ]
         keys = joined[order]
         processed += len(points)
-        progress(10 + int(20 * processed / count), "Campionamento voxel 5 cm")
+        progress(10 + int(20 * processed / count), "Voxel sampling at 5 cm")
     if len(representatives) < 500:
-        raise ValueError("Supporto spaziale insufficiente dopo il campionamento voxel.")
+        raise ValueError("Insufficient spatial support after voxel sampling.")
     tree = cKDTree(representatives)
     normals = np.empty_like(representatives)
     planarity = np.empty(len(representatives))
@@ -110,7 +110,7 @@ def analyse(path, fmt, meters_per_unit, max_voxels, progress, expected_count=Non
         )
         progress(
             30 + int(20 * min(stop, len(representatives)) / len(representatives)),
-            "Normali PCA e planarità",
+            "PCA normals and planarity",
         )
     horizontal = (abs(normals[:, 2]) > 0.95) & (planarity > 0.3)
     vertical = (abs(normals[:, 2]) < 0.2) & (planarity > 0.3)

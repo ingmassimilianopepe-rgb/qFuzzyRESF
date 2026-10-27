@@ -22,7 +22,7 @@ def _patches(xy, min_area, max_cells):
     ij = np.floor((xy - low) / step).astype(int)
     shape = ij.max(0) + 3
     if int(shape[0]) * int(shape[1]) > max_cells:
-        raise ValueError("Piano esterno troppo esteso: ritagliare un edificio.")
+        raise ValueError("Surface raster too large: crop to one building.")
     mask = np.zeros(shape, bool)
     mask[ij[:, 0], ij[:, 1]] = True
     # Only bridge gaps at the 15 cm raster scale. Large holes remain holes;
@@ -48,7 +48,7 @@ def _patches(xy, min_area, max_cells):
 def infer_exterior(P, N, PL, A, profile="monotone", max_raster_cells=4_000_000,
                    progress=lambda percent, stage: None):
     if profile not in {"monotone", "geometry_only"}:
-        raise ValueError("Il profilo legacy e disponibile solo in modalita Interno.")
+        raise ValueError("The legacy profile is only supported by the interior research pipeline.")
     started = time.perf_counter()
     rng = np.random.default_rng(48021)
     surfaces = []
@@ -62,13 +62,14 @@ def infer_exterior(P, N, PL, A, profile="monotone", max_raster_cells=4_000_000,
     top = np.full(int(inverse.max()) + 1, -np.inf)
     np.maximum.at(top, inverse, P[:, 2])
     near_top = P[:, 2] >= top[inverse] - 0.30
-    upper_cut = float(np.quantile(P[:, 2], 0.60))
-    plane_cos = np.cos(np.radians(12))
+    upper_cut = float(np.quantile(P[:, 2], 0.20))
     for kind, max_planes in [("wall", 28), ("roof", 18)]:
+        plane_cos = np.cos(np.radians(12 if kind == "wall" else 5))
+        fit_distance = .06 if kind == "wall" else .035
         if kind == "wall":
             available = (abs(N[:, 2]) < 0.20) & (PL > 0.25)
         else:
-            available = (abs(N[:, 2]) >= 0.25) & (PL > 0.25) & near_top
+            available = (abs(N[:, 2]) >= 0.60) & (PL > 0.25) & near_top
         for iteration in range(max_planes):
             ids = np.flatnonzero(available)
             if len(ids) < 300:
@@ -76,10 +77,14 @@ def infer_exterior(P, N, PL, A, profile="monotone", max_raster_cells=4_000_000,
             sample = rng.choice(ids, min(len(ids), 16000), replace=False)
             seeds = rng.choice(sample, min(len(sample), 96), replace=False)
             sn = N[seeds]
+            if kind == "wall":
+                sn = sn.copy()
+                sn[:, 2] = 0
+                sn /= np.linalg.norm(sn, axis=1)[:, None]
             offsets = np.einsum("ij,ij->i", P[seeds], sn)
             distances = abs(P[sample] @ sn.T - offsets)
             agreement = abs(N[sample] @ sn.T)
-            counts = ((distances <= 0.05) & (agreement >= plane_cos)).sum(0)
+            counts = ((distances <= (.05 if kind == "wall" else .025)) & (agreement >= plane_cos)).sum(0)
             best = int(np.argmax(counts))
             if counts[best] < max(40, 300 * len(sample) / len(ids)):
                 break
@@ -87,15 +92,28 @@ def infer_exterior(P, N, PL, A, profile="monotone", max_raster_cells=4_000_000,
             offset = offsets[best]
             for _ in range(2):
                 residual = abs(P[ids] @ normal - offset)
-                good = (residual <= 0.06) & (abs(N[ids] @ normal) >= plane_cos)
+                good = (residual <= fit_distance) & (abs(N[ids] @ normal) >= plane_cos)
                 selected = ids[good]
                 if len(selected) < 300:
                     break
                 center = P[selected].mean(0)
                 q = P[selected] - center
-                _, vectors = np.linalg.eigh(q.T @ q / len(q))
-                normal = vectors[:, 0]
+                if kind == "wall":
+                    _, vectors = np.linalg.eigh(q[:, :2].T @ q[:, :2] / len(q))
+                    normal = np.r_[vectors[:, 0], 0.]
+                else:
+                    weights = 1 / np.maximum(abs(P[selected] @ normal - offset), .008)**2
+                    center = np.average(P[selected], axis=0, weights=weights)
+                    q = P[selected] - center
+                    _, vectors = np.linalg.eigh((q * weights[:, None]).T @ q / weights.sum())
+                    normal = vectors[:, 0]
                 offset = float(center @ normal)
+            if len(selected) < 300:
+                available[seeds[best]] = False
+                continue
+            # Recompute inliers after the final fit, not for its preceding plane.
+            selected = ids[(abs(P[ids] @ normal - offset) <= fit_distance)
+                           & (abs(N[ids] @ normal) >= plane_cos)]
             if len(selected) < 300:
                 available[seeds[best]] = False
                 continue
@@ -103,7 +121,7 @@ def infer_exterior(P, N, PL, A, profile="monotone", max_raster_cells=4_000_000,
             residual = abs(P[selected] @ normal - offset)
             if kind == "wall" and abs(normal[2]) > 0.20:
                 continue
-            if kind == "roof" and (abs(normal[2]) < 0.25
+            if kind == "roof" and (abs(normal[2]) < 0.60
                                   or np.median(P[selected, 2]) < upper_cut):
                 continue
             # Right-handed plane coordinates; signs do not imply measured
@@ -158,13 +176,13 @@ def infer_exterior(P, N, PL, A, profile="monotone", max_raster_cells=4_000_000,
                     "classification_status": "Geometric candidate; manual semantic review required",
                 })
             progress(min(73, (52 + iteration // 2) if kind == "wall" else (66 + iteration // 3)),
-                     "Piani esterni e falde inclinate")
+                     "Fitting wall planes and roof slopes")
     if not any(s["kind"] == "wall" for s in surfaces):
-        raise ValueError("Nessuna parete esterna planare supportata. Verificare unita, Z verticale e densita.")
+        raise ValueError("No supported planar wall. Check units, vertical Z and point density.")
     if not any(s["kind"] == "roof" for s in surfaces):
-        progress(73, "Copertura non supportata: modello parziale di sole pareti")
+        progress(73, "No supported roof: partial wall model")
     return {
-        "mode": "exterior", "method_version": "0.4", "profile": profile,
+        "mode": "exterior", "method_version": "0.5", "profile": profile,
         "source_sha256": A["sha256"], "source_filename": A["source"],
         "coordinate_origin_m": A["coordinate_origin_m"],
         "reference_used": False, "spaces": [],
@@ -173,6 +191,6 @@ def infer_exterior(P, N, PL, A, profile="monotone", max_raster_cells=4_000_000,
         "parameters": {"plane_distance_m": .06, "normal_angle_deg": 12,
                        "raster_m": .15, "contour_regularization_m": .002, "fuzzy_threshold": .65,
                        "seed": 48021, "max_wall_planes": 28, "max_roof_planes": 18,
-                       "roof_height_quantile": .60, "upper_column_m": .30},
+                       "roof_height_quantile": .20, "upper_column_m": .30},
         "runtime_s": time.perf_counter() - started,
     }

@@ -1,15 +1,15 @@
 @echo off
 setlocal
-title Installazione qFuzzyRESF 0.2.0
+title qFuzzyRESF 0.3.0 installation
 set "QF_ENV=%LOCALAPPDATA%\qFuzzyRESF\.venv"
 set "QF_ROOT=%~dp0.."
 if not exist "%QF_ROOT%\backend\requirements.txt" (
-    echo Estrarre tutto lo ZIP prima di avviare questo programma.
+    echo Extract the complete ZIP before running this installer.
     goto :failed
 )
 py -3.12 -m venv "%QF_ENV%"
 if errorlevel 1 (
-    echo Installare Python 3.12 x64 con il launcher Python e riprovare.
+    echo Install Python 3.12 x64 with the Python launcher, then try again.
     goto :failed
 )
 set "QF_PYTHON=%QF_ENV%\Scripts\python.exe"
@@ -20,13 +20,13 @@ if errorlevel 1 goto :failed
 "%QF_PYTHON%" "%QF_ROOT%\backend\run_pipeline.py" --check
 if errorlevel 1 goto :failed
 echo.
-echo INSTALLAZIONE COMPLETATA. Interprete per il plugin:
+echo INSTALLATION COMPLETE. Python interpreter for the plugin:
 echo %QF_PYTHON%
 echo.
 pause
 exit /b 0
 :failed
 echo.
-echo INSTALLAZIONE NON COMPLETATA. Conservare il messaggio precedente.
+echo INSTALLATION FAILED. Keep the preceding error message.
 pause
 exit /b 1

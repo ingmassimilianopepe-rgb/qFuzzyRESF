@@ -1,57 +1,25 @@
-# Contratto plugin ↔ motore, versione 1
+# Job contract
 
-Il plugin esporta una copia della nuvola in XYZ64: triple X,Y,Z **float64 little-endian**, senza intestazione, 24 byte per punto. Le coordinate sono quelle globali originali (`local/globalScale − globalShift`), ancora nelle unità selezionate dall'utente. Colori, normali già calcolate e attributi LAS non vengono usati. La PCA viene ricalcolata sui voxel.
-
-Invocazione senza shell:
-
-```text
-<python> <backend>/run_pipeline.py --request <job.json>
-```
-
-Esempio di job:
+A job is a UTF-8 JSON object, schema version 1:
 
 ```json
 {
   "schema_version": 1,
-  "input": {
-    "path": "/percorso/selected.xyz64",
-    "format": "xyz64",
-    "count": 1000000,
-    "name": "Edificio piano terra"
-  },
-  "output": "/percorso/edificio.ifc",
+  "input": {"path": "C:/data/building.las", "format": "las"},
+  "output": "C:/data/building_v03.ifc",
   "meters_per_unit": 1.0,
+  "mode": "unified",
   "profile": "monotone",
-  "mode": "interior",
-  "limits": {"max_voxels": 3000000, "max_raster_cells": 4000000},
-  "cloudcompare": {
-    "global_shift": [0, 0, 0],
-    "global_scale": 1.0,
-    "export_coordinates": "GLOBAL"
-  }
+  "limits": {"max_voxels": 3000000, "max_raster_cells": 4000000}
 }
 ```
 
-`work_dir` opzionale è una cartella temporanea, sullo stesso filesystem dell'output, posseduta dal chiamante. Il plugin la usa per garantire la pulizia anche dopo l'arresto forzato del processo. Il motore standalone crea e rimuove autonomamente la propria cartella temporanea.
+Input formats: `las`, `laz`, `xyz64`. XYZ64 is headerless little-endian float64 XYZ triples; optional `input.count` is checked. CloudCompare exports original global coordinates, reversing Global Shift/Scale. Optional `input.name` is diagnostic provenance. `work_dir` must be on the same filesystem as the output for hard-link publication.
 
-`mode` è opzionale e vale `interior` (predefinito, compatibilità schema 1) oppure `exterior`. La modalità è sempre esplicita nella GUI, nei report e nel risultato. Nessun fallback automatico dagli interni agli esterni. `exterior` rifiuta il profilo `legacy` prima di elaborare i punti.
+Scale must be finite and in [1e-6, 1000]. Voxel limits: 500–20,000,000; raster cells: 1,000–20,000,000. Parent output directory must exist. Neither the IFC nor its `.fuzzyresf` diagnostic directory may already exist.
 
-I profili validi sono `monotone`, `legacy`, `geometry_only`. Le unità vengono convertite **una sola volta** in `cloud.analyse`. I limiti voxel e raster vengono controllati prima delle operazioni più onerose; non rappresentano una garanzia universale di memoria disponibile. I percorsi di input e output devono essere distinti e l'output deve essere nuovo.
+Default mode is now `unified`. Historical explicit `interior` / `exterior` values remain available through CLI/JSON, not the GUI. Profiles are `monotone` and `geometry_only`; `legacy` is retained only for explicit interior jobs.
 
-## Eventi stdout
+Stdout is newline-delimited JSON with events `ready`, `progress`, `warning`, `result`, `error`, `cancelled`. Stages and application-authored messages are English. Successful results identify output/diagnostic paths, software/method versions, hashes, counts, dependency versions and warnings. `inference.json` also records the unified room-evidence decision and topology edits.
 
-Una riga JSON UTF-8 per evento; nessun dato binario su stdout.
-
-```json
-{"event":"progress","percent":55,"stage":"Proposte di parete e supporto fuzzy"}
-{"event":"warning","message":"Gli spazi richiedono verifica manuale."}
-{"event":"result","output":"/percorso/edificio.ifc","diagnostics":"/percorso/edificio.fuzzyresf","counts":{"IfcWall":5,"IfcSpace":2}}
-```
-
-L'evento `result` reale comprende anche hash, versioni, tempi e avvertenze. `error` e `cancelled` contengono `message`. Codici di uscita: 0 successo, 1 errore, 2 argomenti CLI non validi, 130 interruzione gestita. `--check` restituisce `ready` con versioni delle dipendenze.
-
-## Pubblicazione e annullamento
-
-L'IFC viene costruito in staging, riaperto, validato e tessellato. Solo dopo i controlli si crea la cartella diagnostica con accesso esclusivo e si pubblica il file tramite hard link atomico. Nessun file preesistente viene rimpiazzato. Se il filesystem non supporta hard link, l'operazione fallisce senza creare un IFC parziale.
-
-Durante l'esportazione la GUI resta modale: la selezione non può essere modificata mentre viene letta. Il motore gira in un singolo processo Python esterno. `Annulla` invia terminate e, dopo tre secondi, kill se necessario. Su Windows terminate può essere immediato; la cartella temporanea posseduta da Qt viene comunque rimossa al termine del processo. Un arresto forzato del solo motore standalone può lasciare una cartella nascosta `.qfuzzyresf-*`, ma non un IFC parziale pubblicato. Un'interruzione nell'istante finale può lasciare un IFC già validato; il salvataggio non viene retroattivamente annullato.
+Return codes: 0 success; 1 error; 130 cancellation. The native frontend uses QProcess without a shell, UTF-8 streams and two BLAS/OpenMP threads. Cancel terminates Python, then kills it if needed. Temporary files are owned by the job. Validation occurs before exclusive publication; existing outputs are never replaced. A complete validated IFC may exist if cancellation arrives after the final commit point.
