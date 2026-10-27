@@ -154,7 +154,7 @@ void FuzzyDialog::reject()
     if (!m_busy) { QDialog::reject(); return; }
     if (m_cancelled) return;
     m_cancelled = true;
-    log(tr("Cancelmento in corso…"));
+    log(tr("Cancelling…"));
     m_process.terminate();
     QTimer::singleShot(3000, this, [this] {
         if (m_cancelled && m_process.state() != QProcess::NotRunning) m_process.kill();

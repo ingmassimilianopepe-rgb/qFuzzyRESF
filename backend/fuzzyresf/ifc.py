@@ -266,7 +266,7 @@ def build_ifc(I, output):
         )
         e.PredefinedType = "INTERNAL"
         e.CompositionType = "ELEMENT"
-        e.LongName = "Ambiente candidato da verificare"
+        e.LongName = "Provisional space requiring review"
         props(e, {"IsExternal": False}, "Pset_SpaceCommon")
         q = api("pset.add_qto", f, product=e, name="Qto_SpaceBaseQuantities")
         api(
@@ -311,7 +311,7 @@ def build_ifc(I, output):
             if key not in virtuals:
                 virtuals[key] = add(
                     "IfcVirtualElement",
-                    f"VE{len(virtuals) + 1:04d} Confine virtuale",
+                    f"VE{len(virtuals) + 1:04d} Virtual boundary",
                     None,
                     0,
                     0,

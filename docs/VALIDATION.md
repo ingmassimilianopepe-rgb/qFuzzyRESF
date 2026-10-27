@@ -20,7 +20,7 @@ The earlier `Edificio_BIM_fuzzy_interni_v2.ifc` was inspected directly. Its own 
 
 The 0.2.0 plugin produced 28 wall patches and 3 roof candidates. Raster boundaries were extruded independently; this caused teeth, duplicate roof observations, gaps and protruding wall tips. Element closure validation did not test whole-building continuity.
 
-The 0.3.0 diagnostic reconstruction produces 15 regularized wall portions and 2 roof surfaces, including the lower attached roof; 17 closed element meshes and no EXPRESS errors. The floor/ceiling evidence gate still does not support the earlier manually interpreted room layout, so this automatic result has no IfcSpace. Missing floors, stairs, mezzanine interpretation and some curved interfaces remain unresolved. The result is visually cleaner than 0.2.0 but is **not equivalent in completeness to the manually reviewed earlier model**.
+The full original LAS run with 0.3.0 produces 15 regularized wall portions and 2 roof surfaces, including the lower attached roof; 17 closed element meshes and no EXPRESS errors. The floor/ceiling evidence gate still does not support the earlier manually interpreted room layout, so this automatic result has no IfcSpace. Missing floors, stairs, mezzanine interpretation and some curved interfaces remain unresolved. The result is visually cleaner than 0.2.0 but is **not equivalent in completeness to the manually reviewed earlier model**.
 
 ## Diagnostic case: CaseStudy1 / TUB1
 
