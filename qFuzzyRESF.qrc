@@ -1,0 +1,17 @@
+<RCC>
+ <qresource prefix="/CC/plugin/qFuzzyRESF">
+  <file>backend/fuzzyresf/__init__.py</file>
+  <file>backend/fuzzyresf/cli.py</file>
+  <file>backend/fuzzyresf/cloud.py</file>
+  <file>backend/fuzzyresf/ifc.py</file>
+  <file>backend/fuzzyresf/inference.py</file>
+  <file>backend/fuzzyresf/levels.py</file>
+  <file>backend/fuzzyresf/exterior.py</file>
+  <file>backend/fuzzyresf/exterior_ifc.py</file>
+  <file>backend/fuzzyresf/topology.py</file>
+  <file>backend/fuzzyresf/unified.py</file>
+  <file>backend/run_pipeline.py</file>
+  <file>info.json</file>
+  <file>resources/icon.svg</file>
+ </qresource>
+</RCC>

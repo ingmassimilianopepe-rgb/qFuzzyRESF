@@ -1,0 +1,127 @@
+name: Build and test qFuzzyRESF
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+env:
+  OPENBLAS_NUM_THREADS: 2
+  OMP_NUM_THREADS: 2
+permissions:
+  contents: read
+concurrency:
+  group: qfuzzyresf-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: python -m pip install -r backend/requirements.txt
+      - run: python backend/run_pipeline.py --check
+      - run: python -m pytest -q
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - uses: actions/checkout@v4
+        with:
+          repository: CloudCompare/CloudCompare
+          ref: 001bfd04a13101bfee84a28a6eaa3c7a6338b526
+          path: CloudCompare
+      - name: Core submodules
+        working-directory: CloudCompare
+        run: git submodule update --init --recursive --depth 1 libs/qCC_db/extern/CCCoreLib libs/qPCP libs/CCAppCommon/QDarkStyleSheet plugins/core/IO/MeshIO
+      - name: Attach plugin
+        shell: bash
+        run: |
+          mkdir -p CloudCompare/plugins/private/qFuzzyRESF
+          cp -r plugin/. CloudCompare/plugins/private/qFuzzyRESF/
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-svg-dev qt6-tools-dev qt6-tools-dev-tools libqt6opengl6-dev libgl1-mesa-dev liblaszip-dev
+      - name: Windows Qt
+        if: runner.os == 'Windows'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          cache: true
+      - uses: actions/checkout@v4
+        if: runner.os == 'Windows'
+        with:
+          repository: LASzip/LASzip
+          ref: fa089bd8b2b4ca5631e199d257374c32a125f73f
+          path: LASzip
+      - name: Windows LASzip
+        if: runner.os == 'Windows'
+        run: |
+          cmake -S LASzip -B laszip-build -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/laszip-install
+          cmake --build laszip-build --config Release --parallel 3
+          cmake --install laszip-build --config Release
+          # CloudCompare's FindLASzip imports include/, while the 3.5 header
+          # uses <laszip_common.h> unless LASZIP_API_VERSION is defined.
+          Copy-Item LASzip/include/laszip/laszip_common.h laszip-install/include/laszip_common.h
+          cmake -S plugin/tests/laszip_probe -B laszip-probe-build -DLASZIP_ROOT=${{ github.workspace }}/laszip-install
+          cmake --build laszip-probe-build --config Release
+      - name: Configure
+        run: cmake -S CloudCompare -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/dist "-DCMAKE_PREFIX_PATH=${{ env.QT_ROOT_DIR }};${{ github.workspace }}/laszip-install" -DPLUGIN_IO_QLAS=ON -DOPTION_MP_BUILD=ON -DPLUGIN_STANDARD_QFUZZYRESF=ON -DQFUZZYRESF_BUILD_SMOKE_TESTS=ON -DOPTION_BUILD_CCVIEWER=OFF -DCCCORELIB_USE_TBB=OFF -DCCCORELIB_USE_CGAL=OFF
+      - name: Build CloudCompare and plugin
+        run: cmake --build build --config Release --parallel 3
+      - name: Install matching build
+        run: cmake --install build --config Release
+      - name: Bundle Qt runtime on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Recurse -Filter CloudCompare.exe | Select-Object -First 1
+          if (-not $exe) { throw 'CloudCompare.exe missing' }
+          windeployqt --release --no-translations $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'windeployqt failed' }
+          # windeployqt may omit the MSVC runtime outside a developer shell.
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $crt = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Filter Microsoft.VC143.CRT -Directory -Recurse | Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $crt) { throw 'MSVC x64 redistributable runtime missing' }
+          Copy-Item (Join-Path $crt.FullName '*.dll') $exe.DirectoryName
+          $omp = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Filter vcomp140.dll -File -Recurse | Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $omp) { throw 'MSVC x64 OpenMP runtime missing' }
+          Copy-Item $omp.FullName $exe.DirectoryName
+          Copy-Item plugin/backend (Join-Path $exe.DirectoryName 'backend') -Recurse
+          Copy-Item plugin/scripts (Join-Path $exe.DirectoryName 'scripts') -Recurse
+          Copy-Item plugin/docs (Join-Path $exe.DirectoryName 'docs') -Recurse
+          Copy-Item plugin/README.md,plugin/LICENSE,plugin/INSTALL_qFuzzyRESF.cmd $exe.DirectoryName
+          Copy-Item LASzip/COPYING.txt (Join-Path $exe.DirectoryName "docs/LASzip_LICENSE.txt")
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: plugin/backend/requirements.txt
+      - run: python -m pip install -r plugin/backend/requirements.txt
+      - name: Native plugin and Qt-to-IFC bridge smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python plugin/scripts/native_smoke.py build dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qFuzzyRESF-0.3.0-${{ runner.os }}-CloudCompare-001bfd0
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
