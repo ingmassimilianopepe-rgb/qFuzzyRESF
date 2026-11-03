@@ -6,18 +6,42 @@ import numpy as np
 from shapely.geometry import Polygon, LineString, Point, MultiPoint, mapping, shape
 from shapely.ops import unary_union, polygonize, split
 from shapely.affinity import affine_transform
-from shapely import set_precision, make_valid
+from shapely import set_precision, make_valid, union_all, intersection, difference, union
+
+
+OVERLAY_GRID_M = .001
 
 
 def stable(g):
-    """Millimetre precision for overlays; collapse zero-width numerical slivers."""
-    return unary_union(polygons(set_precision(make_valid(g), .001)))
+    """Polygon-only millimetre geometry, including nested collection results.
+
+    Overlay results may contain a polygon *and* a zero-area line at a touching
+    edge. Passing that mixed-dimensional collection to the next difference
+    caused GEOS overlay assertions on three supplied clouds. Normalize after
+    every operation, not only before the first operation. No area tolerance is
+    increased to make a failing building pass.
+    """
+    parts = polygons(make_valid(g))
+    snapped = [set_precision(p, OVERLAY_GRID_M) for p in parts]
+    snapped = [p for g in snapped for p in polygons(g)]
+    return union_all(snapped, grid_size=OVERLAY_GRID_M) if snapped else Polygon()
 
 
 def polygons(g):
     if g.is_empty:
         return []
-    return [g] if g.geom_type == 'Polygon' else [p for p in getattr(g, 'geoms', []) if p.geom_type == 'Polygon']
+    if g.geom_type == 'Polygon':
+        return [g]
+    return [p for part in getattr(g, 'geoms', []) for p in polygons(part)]
+
+
+def overlay(a, b, operation):
+    """Fixed-precision polygon overlay with normalization between operations."""
+    functions = {'intersection': intersection, 'difference': difference, 'union': union}
+    if operation not in functions:
+        raise ValueError('Unknown polygon overlay operation')
+    result = functions[operation](stable(a), stable(b), grid_size=OVERLAY_GRID_M)
+    return stable(result)
 
 
 def clean_polygon(g, tolerance=.20):
@@ -113,7 +137,7 @@ def regularize_structure(I, P, N, PL):
         paired = False
         for r in roofs:
             n = np.array(r['normal']); offset = abs(n @ (np.array(s['plane_origin'])-r['plane_origin']))
-            overlap = fp.intersection(shape(r['footprint'])).area / max(.001, min(fp.area, shape(r['footprint']).area))
+            overlap = overlay(fp, shape(r['footprint']), 'intersection').area / max(.001, min(fp.area, shape(r['footprint']).area))
             if abs(n @ s['normal']) > np.cos(np.radians(4)) and offset < .30 and overlap > .65:
                 r.setdefault('merged_observations', []).append(s['id'])
                 if offset > .05:
@@ -163,14 +187,14 @@ def regularize_structure(I, P, N, PL):
     occupied = Polygon()
     unique_roofs = []
     for r in roofs:
-        for fp in polygons(shape(r['footprint']).difference(occupied)):
+        for fp in polygons(overlay(shape(r['footprint']), occupied, 'difference')):
             if fp.area < 2:
                 continue
             q = copy.deepcopy(r);q['footprint']=mapping(fp)
             q['polygon']=mapping(roof_profile(q,fp));q['area_m2']=shape(q['polygon']).area
             q['boundary_status']='Regularized observed outline (0.22 m); shared ridges <=0.35 m; overhang retained'
             unique_roofs.append(q)
-        occupied=occupied.union(shape(r['footprint']))
+        occupied=overlay(occupied, shape(r['footprint']), 'union')
     roofs=unique_roofs
     for r in roofs:
         domain=stable(shape(r['footprint']).buffer(.50, join_style=2))
@@ -253,15 +277,15 @@ def regularize_structure(I, P, N, PL):
         if np.linalg.norm(b-a)<.2:continue
         # Square caps reach the shared centreline; subtraction resolves corner overlap.
         footprint=stable(LineString([a,b]).buffer(w['thickness_m']/2,cap_style=3,join_style=2))
-        footprint=stable(footprint.difference(occupied))
+        footprint=overlay(footprint, occupied, 'difference')
         footprint=unary_union([p for p in polygons(footprint) if p.area >= .02])
         if footprint.is_empty:continue
-        occupied=occupied.union(footprint)
+        occupied=overlay(occupied, footprint, 'union')
         pieces=[];remaining=footprint
         for r in sorted(roofs,key=lambda r:-shape(r['footprint']).intersection(footprint).area):
             # The clipping domain may extend 0.50 m beyond a sampled roof edge;
             # this removes unsupported wall tips without altering the roof overhang.
-            covered=remaining.intersection(stable(shape(r['clipping_domain'])))
+            covered=overlay(remaining, shape(r['clipping_domain']), 'intersection')
             for part in polygons(covered):
                 if part.area<.001:continue
                 heights=roof_z(r,np.array(part.exterior.coords))-r['thickness_m']/abs(r['normal'][2])
@@ -271,7 +295,7 @@ def regularize_structure(I, P, N, PL):
                                'top':float(max(w['top'],heights.max())+.01),
                                'clip':{'origin':(np.array(r['plane_origin'])-np.array([0,0,r['thickness_m']/abs(r['normal'][2])])).tolist(),
                                        'normal':r['normal']},'roof_id':r['id']})
-                remaining=remaining.difference(part)
+                remaining=overlay(remaining, part, 'difference')
         for part in polygons(remaining):
             if part.area>=.001:pieces.append({'polygon':mapping(part),'base':w['base'],'top':w['top']})
         w['solid_parts']=pieces;w['footprint']=mapping(footprint)
@@ -284,8 +308,10 @@ def regularize_structure(I, P, N, PL):
         seen[raw_id]=seen.get(raw_id,0)+1
         if seen[raw_id]>1:s['id']=raw_id+'_'+str(seen[raw_id])
     I['surfaces']=result+roofs
-    I['method_version']='0.5'
+    I['method_version']='0.6'
     I['topology']={'regularization_m':.22,'max_wall_join_m':.50,'max_roof_join_m':.35,
+                   'overlay_precision_m':OVERLAY_GRID_M,
+                   'overlay_policy':'Polygon-only normalization after every fixed-precision overlay; zero-area contacts are not wall areas',
                    'wall_joins':joins,'roof_joins':ridge_joins,'rejected_fragments':rejected,
                    'raw_surface_count':len(I.get('proposals',[])),
                    'clipped_wall_parts':sum('clip' in p for s in result for p in s['solid_parts']),
@@ -304,10 +330,10 @@ def structural_envelope(env, walls):
         p=stable(shape(w['polygon']));wall_polys.append(p)
         lines.append(LineString([(w['position'],w['t0']),(w['position'],w['t1'])]) if w['axis']==0 else
                      LineString([(w['t0'],w['position']),(w['t1'],w['position'])]))
-    loops=[p for p in polygonize(unary_union(lines)) if p.area>2 and p.intersection(env).area>.6*p.area]
+    loops=[p for p in polygonize(unary_union(lines)) if p.area>2 and overlay(p,env,'intersection').area>.6*p.area]
     candidate=unary_union(loops+wall_polys)
     status='Regularized ceiling support; wall-face snapping and bounded closure'
-    if loops and candidate.intersection(env).area>.70*env.area and candidate.area<1.35*env.area:
+    if loops and overlay(candidate,env,'intersection').area>.70*env.area and candidate.area<1.35*env.area:
         env=stable(candidate.buffer(.01,join_style=2).buffer(-.01,join_style=2))
         status='Shared closed wall loops and wall outer faces; ceiling support confirms footprint'
     else:
@@ -329,7 +355,10 @@ def structural_envelope(env, walls):
     # Clip wall tips to the shared footprint and assign overlaps to one wall only.
     taken=Polygon();kept=[]
     for w in walls:
-        p=stable(shape(w['polygon'])).intersection(env).difference(taken)
+        p=overlay(overlay(shape(w['polygon']), env, 'intersection'), taken, 'difference')
         if p.area<.01:continue
-        w['polygon']=mapping(p);kept.append(w);taken=taken.union(p)
-    return env,kept,status
+        w['polygon']=mapping(p)
+        w['geometry_overlay']={'precision_m':OVERLAY_GRID_M,
+                               'policy':'Polygon-only normalization between intersection and difference'}
+        kept.append(w);taken=overlay(taken,p,'union')
+    return env,kept,status+'; polygon overlays normalized on 0.001 m grid'

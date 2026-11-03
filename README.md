@@ -1,49 +1,53 @@
 # qFuzzyRESF — point cloud to BIM IFC
 
-**Version 0.3.0 · pilot method 0.5.** A native C++/Qt plugin for CloudCompare 2.14 / Qt 6, using a local Python engine. The interface, installer messages and reports are in English.
+**Version 0.4.0 · experimental method 0.6.** A native C++/Qt plugin for CloudCompare 2.14 / Qt 6, with a local Python engine and an English interface.
 
-## What changed
+## Changes
 
-One **Generate IFC** workflow replaces the Interior/Exterior menu. The engine evaluates floor/ceiling evidence, reconstructs supported interior spaces, and combines these with additional observed building surfaces in one IFC. It also runs when only building surfaces are supported, recording why rooms could not be generated.
+- Polygon-only normalization after every fixed-precision wall overlay addresses mixed polygon/line GEOS failures found on three supplied scenes.
+- Wall roof cuts use partitioned parametric sweeps, full-plane clipping and Boolean union. A declared 2 mm overlap within the original wall footprint avoids coincident Boolean seams; it can change the top within this narrow seam. Mesh closure, positive volume and EXPRESS checks remain mandatory.
+- Four selectable profiles separate geometric reconstruction from candidate selection: **Geometry only**, **Monotone fuzzy baseline**, **Evidence support**, and **Relational hypotheses**.
+- Experimental support intervals distinguish missing support from negative evidence. A bounded mixed-integer solver selects finite candidate sets using neighbouring-wall compatibility and duplicate conflicts. This is not global building-geometry optimization or a learned/calibrated classifier.
+- Reports separate exported geometry from exterior candidates discarded during fusion and explicitly identify partial surface models.
 
-The geometry now uses regularized boundaries, paired wall faces, bounded wall joins, roof-face deduplication, shared roof ridges where supported, and parametric wall trimming under roofs. Floor and ceiling outlines use both observed horizontal surfaces and the wall graph, reducing raster teeth and wall tips outside the slab. Genuine measured roof overhangs are retained.
+One **Generate IFC** workflow evaluates supported rooms and additional observed surfaces. The main interior level still assumes predominantly orthogonal walls and a supported horizontal floor/ceiling pair. Multiple-storey spaces, curved rooms, doors/windows, stairs and complete global envelope closure remain unresolved. No superiority over published methods is claimed. See [method](docs/METHOD.md), [research scope](docs/RESEARCH_DIRECTION.md), and [paired protocol](docs/EXPERIMENT_PROTOCOL.md).
 
-This remains a **research prototype**. Individually valid solids and recorded connections do not guarantee a globally closed, complete building. Curved walls are approximated by planar segments. The main interior level uses predominantly orthogonal walls and horizontal floor/ceiling evidence; multiple storeys, curved room boundaries, mezzanines and fully automatic door/window classification are not solved. Fuzzy scores are expert support indices, not calibrated probabilities. No superiority over published methods has been demonstrated.
+## Windows quick start
 
-## Windows: quick start
+1. Extract the entire compiled ZIP into a **new folder**. Start its bundled `CloudCompare.exe`; the DLL requires the matching CloudCompare build.
+2. Reuse your existing Python environment. If dependencies are missing, install Python **3.12 x64** and run **INSTALL_qFuzzyRESF.cmd** beside CloudCompare.exe. It creates/reuses `%LOCALAPPDATA%\qFuzzyRESF\.venv` and finds requirements independently of the working folder.
+3. Open and select exactly one point cloud in the DB tree. Open **Plugins → qFuzzyRESF: Generate BIM IFC** and confirm the title shows **0.4.0**.
+4. Confirm original coordinate units, choose a profile and a **new** `.ifc` filename. Monotone fuzzy remains the baseline default; Evidence and Relational are explicit experimental comparisons.
+5. Click **Generate IFC**. Review the model and diagnostics in an independent IFC viewer. Valid individual solids do not guarantee a complete or globally continuous building.
 
-1. Extract **the whole ZIP** to a new folder. Start the bundled `CloudCompare.exe`; do not place the DLL into a different CloudCompare build.
-2. If Python dependencies are not already installed, install Python **3.12 x64** with its `py` launcher, then double-click **INSTALL_qFuzzyRESF.cmd** beside CloudCompare.exe. It locates its requirements independently of the terminal's working folder and creates/reuses `%LOCALAPPDATA%\qFuzzyRESF\.venv`.
-3. Open the cloud and select exactly one point cloud in the DB tree.
-4. Open **Plugins → qFuzzyRESF: Generate BIM IFC**. Confirm the title shows **0.3.0**. The previously configured Python interpreter is retained.
-5. Select the original coordinate units, **Monotone fuzzy**, and a new `.ifc` filename. Click **Generate IFC**. There is no Interior/Exterior selector.
-6. Review the IFC in an IFC viewer and inspect the generated reports, especially inferred extents, thicknesses and virtual space boundaries.
+Z must be vertical. Global Shift/Scale is restored. Processing stays local; temporary XYZ64 export requires about 24 bytes per point. The default 3 million occupied-voxel budget may be raised if RAM permits. Cancellation stops the child process, existing files are never overwritten, and failed validation never publishes a partial IFC.
 
-The existing Python environment can be reused. Global Shift/Scale is restored before export. Processing stays on the computer; temporary XYZ64 export needs about 24 bytes per point plus output space. The default voxel budget is 3 million and can be raised if RAM permits. Cancellation stops the child process. Existing files are never overwritten, and failed validation never publishes a partial IFC.
-
-## Outputs
-
-- `name.ifc`: IFC4 parametric swept solids and Boolean trimming; evidence properties on reconstructed elements.
-- `name.fuzzyresf/audit.json`: input SHA-256, coordinates, unit conversion and sampling evidence.
-- `inference.json`: accepted/rejected proposals, fuzzy support, connection edits and room decisions.
-- `validation.json`: EXPRESS validation, element mesh closure, positive volume, space overlaps and topology diagnostics.
-- `summary.json`: counts, warnings, dependency versions and runtime.
-
-An IFC reference is **never an inference input**. A visually cleaner model can contain inferred completion and still require geometric/semantic review. Missing room evidence is reported, not replaced by an arbitrary room layout.
-
-## Command line
+## Profiles and command line
 
 ```bash
 python backend/run_pipeline.py --check
-python backend/run_pipeline.py --input building.las --output building.ifc --meters-per-unit 1
+python backend/run_pipeline.py --input building.las --output building.ifc --profile relational
 ```
 
-LAS, LAZ and plugin XYZ64 are supported. Other formats can be imported through the appropriate CloudCompare I/O plugin. `--mode unified` is the default. `--mode interior` and `--mode exterior` remain CLI-only research/compatibility options. `--profile geometry_only` supplies an ablation; `legacy` is retained for interior research only.
+| Profile | Role |
+| --- | --- |
+| `geometry_only` | Geometric baseline with the same repair and regularization stages |
+| `monotone` | Previous weighted-membership gate, preserved for comparison |
+| `evidence` | Expert geometric-mean fit support, observed-support fraction and ignorance bounds |
+| `relational` | Same evidence plus joint finite-candidate selection using wall relations |
 
-See [Build and installation](docs/BUILD.md), [Method and limitations](docs/METHOD.md), [Job contract](docs/CONTRACT.md), and [Validation](docs/VALIDATION.md).
+Evidence/relational values are **EXPERT_UNCALIBRATED**, not probabilities or statistical confidence intervals. Low observation coverage is recorded as unknown. No scanner-origin/free-space evidence is fabricated. Solver time/resource limits and deterministic fallback are logged; multiple optimal solutions can differ across solver versions.
+
+LAS, LAZ and plugin XYZ64 are supported. `unified` is the default mode; `interior`/`exterior` remain CLI-only compatibility options. `legacy` is supported only for explicit interior jobs.
+
+## Outputs and verification
+
+`name.ifc` contains IFC4 parametric sweeps and Boolean operations. `name.fuzzyresf` contains `audit.json`, `inference.json`, `validation.json`, and `summary.json`, recording input SHA-256, unit conversion, candidates/relations, geometry, scope, warnings and versions. A reference IFC is never an inference input.
+
+See the current PR workflow for compiled-package and native-test outcomes and [validation](docs/VALIDATION.md) for the measured scope. The earlier semiautomatic single-building model includes manually reviewed interpretations and is not an automatic-output ground truth. Object counts are not semantic accuracy scores.
 
 ## Authors and licence
 
 Massimiliano Pepe and Donato Palumbo — Department of Engineering and Geology, “G. d’Annunzio” University of Chieti-Pescara. Contact: massimiliano.pepe@unich.it.
 
-GPL-3.0-or-later: [LICENSE](LICENSE). Dependencies retain their own licences. User point clouds and reference models are not included.
+GPL-3.0-or-later: [LICENSE](LICENSE). Dependencies retain their licences. User point clouds and reference models are not included.

@@ -116,7 +116,7 @@ def build_ifc(I, output):
     props(
         project,
         {
-            "MethodVersion": "0.5 pilot",
+            "MethodVersion": "0.6 experimental",
             "Profile": I.get("profile", "monotone"),
             "SourceSHA256": I["source_sha256"],
             "ReferenceUsedForReconstruction": False,
@@ -126,7 +126,7 @@ def build_ifc(I, output):
             "RoomTopologyValidated": False,
             "Method": "PCA normals, axis plane proposals, monotone Sugeno support, paired faces, masked distance watershed",
             "FuzzyScoreMeaning": "Support index; not a calibrated probability",
-            "ExperimentalStatus": "Fixed v0.5 pilot parameters; no population-level performance claim",
+            "ExperimentalStatus": "Expert uncalibrated method 0.6; no population-level performance claim",
             "OpeningsStatus": "Not reconstructed; bridged wall gaps may cover real openings",
         },
     )
@@ -171,7 +171,7 @@ def build_ifc(I, output):
             {
                 "ReviewRequired": True,
                 "SourceSHA256": I["source_sha256"],
-                "MethodVersion": "0.5",
+                "MethodVersion": "0.6",
                 **pr,
             },
         )

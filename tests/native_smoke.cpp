@@ -58,6 +58,11 @@ int main(int argc, char** argv)
     dialog.findChild<QLineEdit*>("outputPath")->setText(output);
     dialog.findChild<QComboBox*>("sourceUnits")->setCurrentIndex(2);
     if (dialog.findChild<QComboBox*>("reconstructionMode")) return 18;
+    auto* profile = dialog.findChild<QComboBox*>("reconstructionProfile");
+    if (!profile || profile->count() != 4) return 21;
+    const int relational = profile->findData("relational");
+    if (relational < 0) return 22;
+    profile->setCurrentIndex(relational);
     auto* start = dialog.findChild<QPushButton*>("generateIfc");
     int outcome = 9;
     bool started = false;
@@ -78,6 +83,7 @@ int main(int argc, char** argv)
     if (!file.open(QIODevice::ReadOnly)) return 11;
     const auto summary = QJsonDocument::fromJson(file.readAll()).object();
     const auto counts = summary.value("counts").toObject();
+    if (summary.value("profile").toString() != "relational") return 23;
     if (counts.value("IfcWall").toInt() != 5 || counts.value("IfcSpace").toInt() != 2) return 12;
     QFile auditFile(folder.filePath(QString::fromUtf8("BIM città.fuzzyresf/audit.json")));
     if (!auditFile.open(QIODevice::ReadOnly)) return 13;
@@ -85,7 +91,7 @@ int main(int argc, char** argv)
     if (low.size() != 3 || std::abs(low[0].toDouble() - 500000.) > .01
         || std::abs(low[1].toDouble() - 4200000.) > .01
         || std::abs(low[2].toDouble() - 100.) > .01) return 14;
-    std::cout << "Plugin loaded; selection and Qt-to-IFC bridge passed: 5 walls, 2 spaces.\n";
+    std::cout << "Plugin loaded; relational Qt-to-IFC bridge passed: 5 walls, 2 spaces.\n";
     timer.stop();
     ccPointCloud shell("Sloped roof shell");
     if (!shell.reserve(150000)) return 19;
@@ -110,6 +116,9 @@ int main(int argc, char** argv)
     exterior.findChild<QLineEdit*>("outputPath")->setText(extOutput);
     exterior.findChild<QComboBox*>("sourceUnits")->setCurrentIndex(0);
     if (exterior.findChild<QComboBox*>("reconstructionMode")) return 20;
+    auto* extProfile = exterior.findChild<QComboBox*>("reconstructionProfile");
+    if (!extProfile || extProfile->findData("evidence") < 0) return 24;
+    extProfile->setCurrentIndex(extProfile->findData("evidence"));
     auto* extStart = exterior.findChild<QPushButton*>("generateIfc");
     bool extStarted = false;
     outcome = 15;
@@ -130,8 +139,9 @@ int main(int argc, char** argv)
     if (!extFile.open(QIODevice::ReadOnly)) return 16;
     const auto extSummary = QJsonDocument::fromJson(extFile.readAll()).object();
     const auto extCounts = extSummary.value("counts").toObject();
+    if (extSummary.value("profile").toString() != "evidence") return 25;
     if (extSummary.value("mode").toString() != "unified" || extCounts.value("IfcSpace").toInt() != 0
         || extCounts.value("IfcRoof").toInt() < 1 || extCounts.value("IfcWall").toInt() < 4) return 17;
-    std::cout << "Unified shell-to-IFC bridge passed: walls and sloped roof, no unsupported rooms.\n";
+    std::cout << "Evidence shell-to-IFC bridge passed: walls and sloped roof, no unsupported rooms.\n";
     return 0;
 }

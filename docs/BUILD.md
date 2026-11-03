@@ -4,7 +4,7 @@
 
 Use the bundled application. The plugin targets CloudCompare 2.14 / Qt 6 at commit `001bfd04a13101bfee84a28a6eaa3c7a6338b526`. Do not copy its DLL to CloudCompare 2.13 / Qt 5 or an arbitrary build. Windows CI uses Visual Studio 2022 x64 and Qt 6.8.3 `msvc2022_64`; application, plugin, Qt, MSVC and OpenMP runtime files are packaged together.
 
-CI artifact name: `qFuzzyRESF-0.3.0-Windows-CloudCompare-001bfd0`. Artifacts are retained for 30 days. These are test builds, not signed stable installers. Python dependencies are installed separately. Linux native packages require compatible Ubuntu 24.04 Qt/OpenGL/LASzip system libraries.
+CI artifact name: `qFuzzyRESF-0.4.0-Windows-CloudCompare-001bfd0`. Artifacts are retained for 30 days. These are test builds, not signed stable installers. Python dependencies are installed separately. Linux native packages require compatible Ubuntu 24.04 Qt/OpenGL/LASzip system libraries.
 
 ## Python setup
 

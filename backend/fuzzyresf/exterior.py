@@ -47,12 +47,13 @@ def _patches(xy, min_area, max_cells):
 
 def infer_exterior(P, N, PL, A, profile="monotone", max_raster_cells=4_000_000,
                    progress=lambda percent, stage: None):
-    if profile not in {"monotone", "geometry_only"}:
+    if profile not in {"monotone", "geometry_only", "evidence", "relational"}:
         raise ValueError("The legacy profile is only supported by the interior research pipeline.")
     started = time.perf_counter()
     rng = np.random.default_rng(48021)
     surfaces = []
     proposals = []
+    selection_audit = None
     # Local column top evidence, not a claimed semantic roof classifier.
     xy_origin = P[:, :2].min(0)
     columns = np.floor((P[:, :2] - xy_origin) / 0.30).astype(np.int64)
@@ -156,10 +157,26 @@ def infer_exterior(P, N, PL, A, profile="monotone", max_raster_cells=4_000_000,
                     ramp(alignment, .90, .99), ramp(poly.area, 1.5, 12),
                     ramp(coverage, .40, .90)]
                 score = float(np.dot(memberships, [.25, .30, .20, .10, .15]))
-                accepted = p95 <= .06 and (profile == "geometry_only" or score >= .65)
+                accepted = p95 <= .06 and (profile in {"geometry_only", "evidence", "relational"} or score >= .65)
                 record = {"kind": kind, "area_m2": float(poly.area),
                           "support_points": len(patch_ids), "P95_m": p95,
                           "score": score, "accepted": bool(accepted)}
+                if profile in {"evidence", "relational"}:
+                    from .hypotheses import evidence
+                    signed = P[patch_ids]@normal-offset
+                    sigma = float(1.4826*np.median(abs(signed-np.median(signed))))
+                    observed_evidence = evidence(planarity, alignment, p95, sigma, coverage)
+                    # Wall tangent and observed vertical extent, used only for
+                    # finite pair relations. Roof decisions remain unary here.
+                    xmin, _, xmax, _ = poly.bounds
+                    start_xy = (center+xmin*u)[:2].tolist()
+                    end_xy = (center+xmax*u)[:2].tolist()
+                    base, top_z = np.quantile(P[patch_ids, 2], [.02, .98])
+                    record.update(evidence=observed_evidence, baseline_score=score,
+                                  geometry_pass=bool(p95<=.06), proposal_index=len(proposals),
+                                  relation_geometry={"kind": kind, "start": start_xy,
+                                                     "end": end_xy, "base": float(base),
+                                                     "top": float(top_z)})
                 proposals.append(record)
                 if not accepted:
                     continue
@@ -177,19 +194,33 @@ def infer_exterior(P, N, PL, A, profile="monotone", max_raster_cells=4_000_000,
                 })
             progress(min(73, (52 + iteration // 2) if kind == "wall" else (66 + iteration // 3)),
                      "Fitting wall planes and roof slopes")
+    if profile in {"evidence", "relational"}:
+        from .hypotheses import select_candidates
+        selected, selection_audit = select_candidates(proposals, profile, kind="surface")
+        selected = set(selected)
+        for i, record in enumerate(proposals):
+            record["accepted"] = i in selected
+            record["score"] = record["evidence"]["score"]
+            record["selection_status"] = ("SELECTED" if i in selected else
+                                         "GEOMETRY_REJECTED" if not record["geometry_pass"] else
+                                         record["evidence"]["status"]+"_NOT_SELECTED")
+        surfaces = [s for s in surfaces if s["proposal_index"] in selected]
+        for surface in surfaces:
+            surface["score"] = surface["evidence"]["score"]
     if not any(s["kind"] == "wall" for s in surfaces):
         raise ValueError("No supported planar wall. Check units, vertical Z and point density.")
     if not any(s["kind"] == "roof" for s in surfaces):
         progress(73, "No supported roof: partial wall model")
     return {
-        "mode": "exterior", "method_version": "0.5", "profile": profile,
+        "mode": "exterior", "method_version": "0.6", "profile": profile,
         "source_sha256": A["sha256"], "source_filename": A["source"],
         "coordinate_origin_m": A["coordinate_origin_m"],
         "reference_used": False, "spaces": [],
         "scope": "Partial observed exterior plane patches; no inferred rooms or storeys",
         "surfaces": surfaces, "proposals": proposals,
+        **({"hypotheses": selection_audit} if selection_audit is not None else {}),
         "parameters": {"plane_distance_m": .06, "normal_angle_deg": 12,
-                       "raster_m": .15, "contour_regularization_m": .002, "fuzzy_threshold": .65,
+                       "raster_m": .15, "contour_regularization_m": .002, "fuzzy_threshold": .60 if profile in {"evidence", "relational"} else .65,
                        "seed": 48021, "max_wall_planes": 28, "max_roof_planes": 18,
                        "roof_height_quantile": .20, "upper_column_m": .30},
         "runtime_s": time.perf_counter() - started,

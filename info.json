@@ -2,7 +2,7 @@
   "type": "Standard",
   "name": "qFuzzyRESF · Scan to BIM",
   "icon": ":/CC/plugin/qFuzzyRESF/resources/icon.svg",
-  "description": "qFuzzyRESF 0.3.0: unified scan to IFC4, regularized walls, shared roof connections and supported rooms. Experimental; requires Python dependencies.",
+  "description": "qFuzzyRESF 0.4.0: unified IFC4 reconstruction, robust geometry and experimental evidence/relational hypothesis profiles. Experimental; requires Python dependencies.",
   "authors": [
     {"name": "Massimiliano Pepe", "email": "massimiliano.pepe@unich.it"},
     {"name": "Donato Palumbo"}

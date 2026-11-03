@@ -8,7 +8,9 @@ import ifcopenshell.validate
 import trimesh
 from shapely.geometry import shape
 from shapely.geometry.polygon import orient
-from .topology import polygons
+from .topology import polygons, stable, overlay
+
+BOOLEAN_SEAM_OVERLAP_M = .002
 
 
 def add_surfaces(f, project, building, body, I):
@@ -37,31 +39,36 @@ def add_surfaces(f, project, building, body, I):
         items=[];clipped=False
         if 'solid_parts' in s:
             from ifcopenshell.util.data import Clipping
-            from .topology import stable
-            # Cut one wall body with bounded half-spaces. Unioning pieces which
-            # only touch along faces can leave duplicate internal faces in OCC.
-            height=max(part['top'] for part in s['solid_parts'])
-            for footprint in polygons(shape(s['footprint'])):
-                solid=extrusion(footprint,[0,0,s['base']],[0,0,1],[1,0,0],[0,0,1],height-s['base'])
-                for part in s['solid_parts']:
-                    region=stable(footprint).intersection(stable(shape(part['polygon'])))
-                    if region.area < .0001:continue
-                    clip=part.get('clip',{'origin':[0,0,part['top']],'normal':[0,0,1]})
-                    n=np.array(clip['normal'],dtype=float);u=np.cross(n,[0,1,0]);u/=np.linalg.norm(u)
-                    if region.area >= footprint.area - .0001:
+            # Each disjoint plan region is one complete parametric solid, cut
+            # by an unbounded plane. This avoids finite-cutter side seams.
+            groups={}
+            footprint=stable(shape(s['footprint']))
+            for part in s['solid_parts']:
+                region=overlay(footprint, shape(part['polygon']), 'intersection')
+                if region.area < .0001:continue
+                clip=part.get('clip')
+                if clip:
+                    nn=np.array(clip['normal'],dtype=float);nn/=np.linalg.norm(nn)
+                    key=('plane',)+tuple(np.round(np.r_[nn,nn@clip['origin']],8))
+                else:
+                    key=('horizontal',round(float(part['top']),8))
+                if key not in groups:groups[key]=[region,clip,float(part['top'])]
+                else:
+                    groups[key][0]=overlay(groups[key][0],region,'union')
+                    groups[key][2]=max(groups[key][2],float(part['top']))
+            for region,clip,height in groups.values():
+                if clip:
+                    # A bounded 2 mm overlap removes coincident OCC Boolean
+                    # seams. The wall footprint is never expanded. Adjacent
+                    # sloped tops can change inside this narrow seam only.
+                    region=overlay(region.buffer(BOOLEAN_SEAM_OVERLAP_M,join_style=2),footprint,'intersection')
+                for poly in polygons(region):
+                    solid=extrusion(poly,[0,0,s['base']],[0,0,1],[1,0,0],[0,0,1],height-s['base'])
+                    if clip:
                         solid=Clipping(location=tuple(clip['origin']),normal=tuple(clip['normal'])).apply(f,solid,1.)
-                        continue
-                    for cut in polygons(region):
-                        # Finite parametric cutters avoid OCC's fragile bounded
-                        # half-space handling at coincident wall side faces.
-                        from .topology import roof_profile
-                        v=np.cross(n,u)
-                        plane={'normal':n,'plane_origin':clip['origin'],'basis_u':u,'basis_v':v}
-                        cutter_profile=roof_profile(plane,cut)
-                        up=np.array([0.,0.,1.])
-                        cutter=extrusion(cutter_profile,clip['origin'],n,u,[up@u,up@v,up@n],1000.)
-                        solid=f.create_entity('IfcBooleanResult',Operator='DIFFERENCE',FirstOperand=solid,SecondOperand=cutter)
-                items.append(solid);clipped=True
+                    items.append(solid)
+            clipped=any(clip is not None for _,clip,_ in groups.values())
+
         else:
             n,u,v=[np.array(s[k]) for k in ('normal','basis_u','basis_v')]
             if s.get('extrusion')=='VERTICAL_DOWN_FROM_OBSERVED_TOP':
@@ -87,7 +94,9 @@ def add_surfaces(f, project, building, body, I):
         api('style.assign_representation_styles',f,shape_representation=rep,styles=[style])
         pset=api('pset.add_pset',f,product=e,name='ScanToBIM_Evidence')
         api('pset.edit_pset',f,pset=pset,properties={
-            'MethodVersion':'0.5','ReviewRequired':True,'SourceSHA256':I['source_sha256'],
+            'MethodVersion':'0.6','ReviewRequired':True,'SourceSHA256':I['source_sha256'],
+            'SolidConstruction':'Partitioned parametric sweeps with plane clipping and Boolean union',
+            'BooleanSeamOverlap_m':BOOLEAN_SEAM_OVERLAP_M if cls=='IfcWall' else 0.,
             'SupportScore':s['score'],'ResidualP95_m':s['P95_m'],'SupportPoints':s['support_points'],
             'Thickness_m':s['thickness_m'],'ThicknessEvidence':s['thickness_status'],
             'BoundaryEvidence':s['boundary_status'],'ClassificationEvidence':s['classification_status'],
@@ -119,7 +128,7 @@ def validate_geometry(m):
 def build_exterior_ifc(I,output):
     f=ifcopenshell.file(schema='IFC4');api=ifcopenshell.api.run
     def entity(cls,name):return api('root.create_entity',f,ifc_class=cls,name=name)
-    project=entity('IfcProject','qFuzzyRESF 0.3.0 | Unified scan to BIM')
+    project=entity('IfcProject','qFuzzyRESF 0.4.0 | Unified scan to BIM')
     api('unit.assign_unit',f,units=[api('unit.add_si_unit',f,unit_type=t) for t in ['LENGTHUNIT','AREAUNIT','VOLUMEUNIT']])
     context=api('context.add_context',f,context_type='Model')
     body=api('context.add_context',f,context_type='Model',context_identifier='Body',target_view='MODEL_VIEW',parent=context)
@@ -128,7 +137,7 @@ def build_exterior_ifc(I,output):
         api('aggregate.assign_object',f,products=[child],relating_object=parent)
         api('geometry.edit_object_placement',f,product=child,matrix=np.eye(4))
     pset=api('pset.add_pset',f,product=project,name='ScanToBIM_Evidence')
-    api('pset.edit_pset',f,pset=pset,properties={'MethodVersion':'0.5 pilot','ToolVersion':'0.3.0','Mode':I.get('mode','unified'),
+    api('pset.edit_pset',f,pset=pset,properties={'MethodVersion':'0.6 experimental','ToolVersion':'0.4.0','Mode':I.get('mode','unified'),
         'SourceSHA256':I['source_sha256'],'ReferenceUsedForReconstruction':False,'ReviewRequired':True,
         'Scope':I['scope'],'RoomsStatus':'Insufficient interior evidence','BuildingEnvelopeClosed':False,
         'FuzzyScoreMeaning':'Expert support index; not calibrated probability',
@@ -141,4 +150,5 @@ def build_exterior_ifc(I,output):
             'schema_messages':messages,'geometry_failures':failures,'meshes':meshes,
             'space_area_m2':0.,'space_side_boundary_length_m':{},'building_envelope_closed':False,
             'topology':I.get('topology',{}),
+            'solid_construction':{'method':'Partitioned swept solids with full-plane cuts, Boolean union', 'seam_overlap_m':BOOLEAN_SEAM_OVERLAP_M,'wall_footprint_expanded':False},
             'validation_scope':'EXPRESS, closed element meshes, plan overlaps and recorded joins; no global envelope certification'}

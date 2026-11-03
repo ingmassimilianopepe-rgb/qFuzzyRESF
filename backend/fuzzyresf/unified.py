@@ -25,7 +25,7 @@ def infer_unified(P, N, PL, audit, profile='monotone', max_raster_cells=4_000_00
         else:
             decisions.append({'component':'spaces','status':'PROVISIONAL','count':len(interior['spaces'])})
     progress(58,'Fitting building surfaces and shared connections')
-    raw=infer_exterior(P,N,PL,audit,'geometry_only' if profile=='geometry_only' else 'monotone',max_raster_cells,progress)
+    raw=infer_exterior(P,N,PL,audit,profile if profile in {'geometry_only','evidence','relational'} else 'monotone',max_raster_cells,progress)
     envelope=regularize_structure(raw,P,N,PL)
     if interior is None:
         result=envelope
@@ -49,8 +49,17 @@ def infer_unified(P, N, PL, audit, profile='monotone', max_raster_cells=4_000_00
                 if fp.intersection(env.buffer(.50)).area<.30*fp.area and (s['top']>zc+.60 or s['base']<zf-.60):
                     extra.append(s)
         interior['surfaces']=extra
-        interior['topology']=envelope['topology']
+        # Keep pre-fusion diagnostics separate: many fitted exterior candidates
+        # are not exported when a supported interior model exists.
+        interior['additional_surface_topology_pre_fusion']=envelope['topology']
+        interior['topology']={
+            'scope':'Supported interior wall footprint and retained additional surfaces',
+            'interior_wall_count':len(interior['walls']),
+            'envelope_status':interior.get('envelope_status',''),
+            'retained_additional_surface_ids':[s['id'] for s in extra],
+            'building_envelope_watertight':False,
+        }
         interior['scope']='Supported main interior level plus additional observed building surfaces; provisional room semantics'
         result=interior
-    result['mode']='unified';result['method_version']='0.5';result['decisions']=decisions
+    result['mode']='unified';result['method_version']='0.6';result['decisions']=decisions
     return result

@@ -30,7 +30,7 @@
 FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     : QDialog(parent), m_cloud(cloud)
 {
-    setWindowTitle(tr("qFuzzyRESF 0.3.0 · Point cloud to BIM IFC"));
+    setWindowTitle(tr("qFuzzyRESF 0.4.0 · Point cloud to BIM IFC"));
     setModal(true);
     resize(750, 600);
     QSettings settings;
@@ -90,7 +90,10 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     m_units->setCurrentIndex(settings.value("units", 0).toInt());
     form->addRow(tr("Original coordinate units"), m_units);
     m_profile = new QComboBox;
-    m_profile->addItem(tr("Monotone fuzzy (default)"), "monotone");
+    m_profile->setObjectName("reconstructionProfile");
+    m_profile->addItem(tr("Monotone fuzzy (baseline)"), "monotone");
+    m_profile->addItem(tr("Evidence support (experimental)"), "evidence");
+    m_profile->addItem(tr("Relational hypotheses (experimental)"), "relational");
     m_profile->addItem(tr("Geometry only (research comparison)"), "geometry_only");
     form->addRow(tr("Profile"), m_profile);
     m_limit = new QSpinBox;
@@ -171,7 +174,7 @@ bool FuzzyDialog::prepareJob(QString& requestPath)
         throw std::runtime_error("Output already exists: choose a new filename.");
     m_work = std::make_unique<QTemporaryDir>(output.absolutePath() + "/.qfuzzyresf-job-XXXXXX");
     if (!m_work->isValid()) throw std::runtime_error("Could not create the temporary folder.");
-    const QStringList files = {"run_pipeline.py", "fuzzyresf/__init__.py", "fuzzyresf/cli.py", "fuzzyresf/cloud.py", "fuzzyresf/inference.py", "fuzzyresf/ifc.py", "fuzzyresf/levels.py", "fuzzyresf/exterior.py", "fuzzyresf/exterior_ifc.py", "fuzzyresf/topology.py", "fuzzyresf/unified.py"};
+    const QStringList files = {"run_pipeline.py", "fuzzyresf/__init__.py", "fuzzyresf/cli.py", "fuzzyresf/cloud.py", "fuzzyresf/inference.py", "fuzzyresf/ifc.py", "fuzzyresf/levels.py", "fuzzyresf/exterior.py", "fuzzyresf/exterior_ifc.py", "fuzzyresf/topology.py", "fuzzyresf/unified.py", "fuzzyresf/hypotheses.py"};
     QDir().mkpath(m_work->filePath("fuzzyresf"));
     for (const auto& file : files) {
         QFile resource(":/CC/plugin/qFuzzyRESF/backend/" + file);

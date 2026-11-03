@@ -1,6 +1,6 @@
 @echo off
 setlocal
-title qFuzzyRESF 0.3.0 installation
+title qFuzzyRESF 0.4.0 installation
 set "QF_ENV=%LOCALAPPDATA%\qFuzzyRESF\.venv"
 set "QF_ROOT=%~dp0.."
 if not exist "%QF_ROOT%\backend\requirements.txt" (

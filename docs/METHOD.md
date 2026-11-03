@@ -1,4 +1,4 @@
-# Method 0.5: unified reconstruction with bounded topology edits
+# Method 0.6: supported geometry and finite evidence hypotheses
 
 This is an expert-parameter pilot. The implementation uses only the selected cloud, explicit input scale and configured resource budgets. Reference IFCs are comparison material, never inference inputs. No learning, calibrated probabilities or benchmark superiority is claimed.
 
@@ -51,3 +51,27 @@ These checks distinguish **valid individual solids** from **a globally continuou
 - [IfcOpenShell Clipping utility](https://docs.ifcopenshell.org/autoapi/ifcopenshell/util/data/index.html)
 - [buildingSMART IFC4 IfcBooleanClippingResult](https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD1/HTML/schema/ifcgeometricmodelresource/lexical/ifcbooleanclippingresult.htm)
 - [Shapely geometry operations](https://shapely.readthedocs.io/en/stable/manual.html)
+
+## Method 0.6 revision
+
+The baseline gate above is preserved for `monotone`; `geometry_only` omits it. These are paired against new `evidence` and `relational` profiles with the same repaired geometry.
+
+### Quality-aware expert support
+
+For a candidate, let p be ramp(planarity, .25, .95), a be ramp(normal agreement, .80, .995), sigma the 1.4826-scaled median absolute deviation of signed plane residuals, and d the residual P95. Define r = 1/(1 + (d/max(.025,3*sigma))^2), and fit = p^0.30 r^0.40 a^0.30. These are expert descriptors, not a sensor uncertainty model. The 25 mm denominator floor reflects finite sampling, not a claimed instrument precision.
+
+The observed-support fraction q is derived from occupied candidate cells (interior: 25 cm along-wall by ten height bins; surface: observed patch raster coverage). It is a heuristic fraction, not calibrated reliability or visibility. Ignorance-mixture support bounds are L=q*fit and U=q*fit+1-q, with score (L+U)/2. No support yields [0,1], not a negative absence label. Local selection requires q>=.25 and score>=.60. Missing support remains deferred and is not asserted to be free space.
+
+### Finite relational selection
+
+The relational profile maximizes sum((score_i-.60)*x_i) + sum(reward_ij*y_ij), with binary existence x and y=x_i*x_j. Near-duplicate faces impose x_i+x_j<=1; distinct opposite observed faces can coexist. Positive relations include nearby collinear continuation, parallel paired faces and corner/T junctions with vertical overlap. Edge rewards have degree normalization and use observed-support fractions, with maximum per-edge coefficient .18. Strongly insufficient observation or failed hard geometry cannot be rescued.
+
+SciPy/HiGHS mixed-integer optimization is limited to 2 seconds, 512 candidates and 2048 compatibility edges. The logged deterministic feasible local-search fallback ignores hardware-dependent time-limit incumbents. Multiple optimal MILP solutions can nevertheless differ across solver versions. Every profile remains expert and uncalibrated. The solver chooses existing finite candidates; it does not jointly optimize all wall parameters, invent unseen geometry, model curved rooms or establish global watertightness.
+
+### Geometric operations
+
+Every wall overlay is normalized to polygon-only valid geometry at 1 mm precision, including intermediate results. Zero-area line contacts are not passed into later areal differences. Nested polygon collections are retained. This addresses the three reported mixed-dimensional GEOS failures.
+
+Roof-clipped wall regions are each constructed as complete parameterized extruded profiles with full-plane clipping. Their solids are joined by Boolean union. Clipped plan regions overlap by at most a declared 2 mm buffer, intersected back to the original wall footprint, to avoid coincident OCC seams. This can change top geometry within the seam and is recorded in IFC properties and validation. No wall is discarded merely because validation fails, and no closure/schema test is disabled. The model still requires independent review.
+
+See [EXPERIMENT_PROTOCOL.md](EXPERIMENT_PROTOCOL.md) for the paired development evaluation. No training on reference IFCs or accuracy gain is implied by these equations.

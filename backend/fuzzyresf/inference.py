@@ -1,4 +1,4 @@
-"""Fuzzy-RESF v0.5 pilot, ported from the six-case research workflow.
+"""Fuzzy-RESF v0.6 experimental, ported from the six-case research workflow.
 Numerical parameters are fixed. No reference model is read by this module.
 SPDX-License-Identifier: GPL-3.0-or-later
 """
@@ -22,7 +22,7 @@ def infer(
     max_raster_cells=4_000_000,
     progress=lambda percent, stage: None,
 ):
-    if profile not in {"monotone", "legacy", "geometry_only"}:
+    if profile not in {"monotone", "legacy", "geometry_only", "evidence", "relational"}:
         raise ValueError("Unknown profile")
     start = time.perf_counter()
     from .levels import select_level
@@ -142,6 +142,7 @@ def infer(
         )
     progress(55, "Wall proposals and fuzzy support")
     proposals = []
+    selection_audit = None
     for axis in [0, 1]:
         other = 1 - axis
         good = near & (abs(NN[:, axis]) > np.cos(np.radians(12)))
@@ -192,11 +193,25 @@ def infer(
                     "continuity": float(np.mean(lc >= 3)),
                 }
                 score, legacy, m = fuzzy(feat)
+                observed_evidence = None
+                if profile in {"evidence", "relational"}:
+                    from .hypotheses import evidence
+                    # Observed occupancy before gap completion. Empty cells are
+                    # unobserved, never evidence that the wall does not exist.
+                    cells = np.floor((q[:, [other, 2]]-[t0, zf])/[.25, H/10]).astype(int)
+                    shape_e = (max(1, int(np.ceil((t1-t0)/.25))), 10)
+                    seen = np.zeros(shape_e, bool)
+                    valid = (cells[:, 0]>=0)&(cells[:, 0]<shape_e[0])&(cells[:, 1]>=0)&(cells[:, 1]<10)
+                    seen[cells[valid, 0], cells[valid, 1]] = True
+                    signed = q[:, axis]-pos
+                    sigma = float(1.4826*np.median(abs(signed-np.median(signed))))
+                    observed_evidence = evidence(feat["planarity"], feat["verticality"],
+                                                 float(np.quantile(res, .95)), sigma, float(seen.mean()))
                 geometry = bool(np.quantile(res, 0.95) <= 0.05 and zhi - zlo >= 0.5 * H)
                 accept = bool(
                     geometry
                     and (
-                        profile == "geometry_only"
+                        profile in {"geometry_only", "evidence", "relational"}
                         or (legacy if profile == "legacy" else score) >= 0.70
                     )
                 )
@@ -218,9 +233,27 @@ def infer(
                         "geometry_pass": geometry,
                         "accepted": accept,
                         "legacy_accepted": bool(geometry and legacy >= 0.70),
+                        **({"evidence": observed_evidence,
+                            "baseline_score": score,
+                            "relation_geometry": {
+                                "kind": "wall",
+                                "start": [pos, float(t0)] if axis==0 else [float(t0), pos],
+                                "end": [pos, float(t1)] if axis==0 else [float(t1), pos],
+                                "base": float(zlo), "top": float(zhi)}}
+                           if observed_evidence is not None else {}),
                     }
                 )
 
+    if profile in {"evidence", "relational"}:
+        from .hypotheses import select_candidates
+        selected, selection_audit = select_candidates(proposals, profile)
+        selected = set(selected)
+        for i, proposal in enumerate(proposals):
+            proposal["accepted"] = i in selected
+            proposal["score"] = proposal["evidence"]["score"]
+            proposal["selection_status"] = ("SELECTED" if i in selected else
+                                             "GEOMETRY_REJECTED" if not proposal["geometry_pass"] else
+                                             proposal["evidence"]["status"]+"_NOT_SELECTED")
     # Remove near-identical parallel peaks; then pair faces with compatible extents.
     accepted = sorted(
         [p.copy() for p in proposals if p["accepted"]], key=lambda p: -p["n"]
@@ -399,7 +432,7 @@ def infer(
     if not spaces:
         raise ValueError("No closed space could be reconstructed.")
     result = {
-        "version": "0.5",
+        "version": "0.6",
         "profile": profile,
         "status": "PILOT CLOUD-ONLY RECONSTRUCTION; REVIEW REQUIRED",
         "source_sha256": A["sha256"],
@@ -459,6 +492,12 @@ def infer(
         "openings": [],
         "runtime_s": time.perf_counter() - start,
     }
+    if selection_audit is not None:
+        result["hypotheses"] = selection_audit
+        result["fuzzy"] = {"version": "Quality-aware ignorance mixture and finite relational hypotheses",
+                           "weights_status": "EXPERT_UNCALIBRATED; no reference model or training",
+                           "local_threshold": .60, "minimum_observability": .25,
+                           "interval_semantics": "Support bounds, not calibrated probabilities"}
     result["parameters"].update(
         {
             "watershed": "masked distance-transform marker-controlled watershed",

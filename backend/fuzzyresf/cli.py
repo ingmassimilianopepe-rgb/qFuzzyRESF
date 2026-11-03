@@ -72,7 +72,7 @@ def validate_request(request):
     ):
         raise ValueError("Invalid conversion factor to metres.")
     profile = request.get("profile", "monotone")
-    if profile not in {"monotone", "legacy", "geometry_only"}:
+    if profile not in {"monotone", "legacy", "geometry_only", "evidence", "relational"}:
         raise ValueError("Unknown profile.")
     mode = request.get("mode", "unified")
     if mode not in {"unified", "interior", "exterior"}:
@@ -128,9 +128,11 @@ def run(request):
         audit["cloudcompare"] = request.get("cloudcompare", {})
         audit["mode"] = mode
         warnings = [
-            "Pilot reconstruction: review inferred thicknesses, connections and room semantics.",
+            "Experimental reconstruction: review inferred thicknesses, connections and room semantics.",
             "Wall completion can cover real openings. Doors and windows are not classified.",
         ]
+        if profile in {"evidence", "relational"}:
+            warnings.append("Expert uncalibrated hypothesis selection; support scores are not probabilities. No reference model is used.")
         for warning in warnings:
             emit("warning", message=warning)
         if mode == "unified":
@@ -172,11 +174,15 @@ def run(request):
             emit("warning", message=warning)
         write_json(work / "validation.json", validation)
         summary = {
-            "tool_version": "0.3.0",
+            "tool_version": "0.4.0",
             "mode": mode,
-            "method_version": "0.5",
+            "method_version": "0.6",
             "schema_version": 1,
             "profile": profile,
+            "profile_calibration": "EXPERT_UNCALIBRATED" if profile in {"evidence", "relational"} else "EXPERT_BASELINE",
+            "model_scope": "SUPPORTED_MAIN_LEVEL_WITH_ADDITIONAL_SURFACES" if "main_level" in inference else "PARTIAL_OBSERVED_SURFACES",
+            "rooms_supported": "main_level" in inference,
+            "global_envelope_certified": False,
             "source_sha256": audit["sha256"],
             "ifc_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
             "counts": validation["counts"],
@@ -223,7 +229,7 @@ def main(argv=None):
     parser.add_argument("--output", type=Path)
     parser.add_argument("--meters-per-unit", type=float, default=1.0)
     parser.add_argument(
-        "--profile", choices=["monotone", "legacy", "geometry_only"], default="monotone"
+        "--profile", choices=["monotone", "legacy", "geometry_only", "evidence", "relational"], default="monotone"
     )
     parser.add_argument("--mode", choices=["unified", "interior", "exterior"], default="unified")
     parser.add_argument("--max-voxels", type=int, default=3_000_000)
