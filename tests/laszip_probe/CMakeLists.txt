@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+project(LASzipConsumerProbe LANGUAGES CXX)
+find_path(LASZIP_INCLUDE_DIR NAMES laszip/laszip_api.h HINTS "${LASZIP_ROOT}/include" NO_DEFAULT_PATH REQUIRED)
+find_library(LASZIP_LIBRARY NAMES laszip3 HINTS "${LASZIP_ROOT}/lib" NO_DEFAULT_PATH REQUIRED)
+add_executable(laszip_consumer main.cpp)
+target_include_directories(laszip_consumer PRIVATE "${LASZIP_INCLUDE_DIR}")
+target_link_libraries(laszip_consumer PRIVATE "${LASZIP_LIBRARY}")
