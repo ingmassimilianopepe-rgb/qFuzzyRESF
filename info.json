@@ -1,0 +1,12 @@
+{
+  "type": "Standard",
+  "name": "qFuzzyRESF · Scan to BIM",
+  "icon": ":/CC/plugin/qFuzzyRESF/resources/icon.svg",
+  "description": "qFuzzyRESF 0.4.0: unified IFC4 reconstruction, robust geometry and experimental evidence/relational hypothesis profiles. Experimental; requires Python dependencies.",
+  "authors": [
+    {"name": "Massimiliano Pepe", "email": "massimiliano.pepe@unich.it"},
+    {"name": "Donato Palumbo"}
+  ],
+  "maintainers": [{"name": "Massimiliano Pepe", "email": "massimiliano.pepe@unich.it"}],
+  "references": [{"text": "Source, method and installation", "url": "https://github.com/ingmassimilianopepe-rgb/qFuzzyRESF"}]
+}
