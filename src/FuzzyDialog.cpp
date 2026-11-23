@@ -95,6 +95,8 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     m_profile->addItem(tr("Evidence support (experimental)"), "evidence");
     m_profile->addItem(tr("Relational hypotheses (experimental)"), "relational");
     m_profile->addItem(tr("Geometry only (research comparison)"), "geometry_only");
+    m_profile->addItem(tr("Local opposing faces: continuous (experimental)"), "experimental_local_continuous");
+    m_profile->addItem(tr("Local opposing faces: fuzzy minimum (experimental)"), "experimental_local_fuzzy");
     form->addRow(tr("Profile"), m_profile);
     m_limit = new QSpinBox;
     m_limit->setRange(1, 20);
@@ -174,7 +176,7 @@ bool FuzzyDialog::prepareJob(QString& requestPath)
         throw std::runtime_error("Output already exists: choose a new filename.");
     m_work = std::make_unique<QTemporaryDir>(output.absolutePath() + "/.qfuzzyresf-job-XXXXXX");
     if (!m_work->isValid()) throw std::runtime_error("Could not create the temporary folder.");
-    const QStringList files = {"run_pipeline.py", "fuzzyresf/__init__.py", "fuzzyresf/cli.py", "fuzzyresf/cloud.py", "fuzzyresf/inference.py", "fuzzyresf/ifc.py", "fuzzyresf/levels.py", "fuzzyresf/exterior.py", "fuzzyresf/exterior_ifc.py", "fuzzyresf/topology.py", "fuzzyresf/unified.py", "fuzzyresf/hypotheses.py"};
+    const QStringList files = {"run_pipeline.py", "fuzzyresf/__init__.py", "fuzzyresf/cli.py", "fuzzyresf/cloud.py", "fuzzyresf/inference.py", "fuzzyresf/ifc.py", "fuzzyresf/levels.py", "fuzzyresf/exterior.py", "fuzzyresf/exterior_ifc.py", "fuzzyresf/topology.py", "fuzzyresf/unified.py", "fuzzyresf/hypotheses.py", "fuzzyresf/local_pairs.py"};
     QDir().mkpath(m_work->filePath("fuzzyresf"));
     for (const auto& file : files) {
         QFile resource(":/CC/plugin/qFuzzyRESF/backend/" + file);

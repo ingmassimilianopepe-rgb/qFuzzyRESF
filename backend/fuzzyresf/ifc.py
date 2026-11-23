@@ -116,7 +116,7 @@ def build_ifc(I, output):
     props(
         project,
         {
-            "MethodVersion": "0.6 experimental",
+            "MethodVersion": "0.7 experimental local" if "local_refinement" in I else "0.6 experimental",
             "Profile": I.get("profile", "monotone"),
             "SourceSHA256": I["source_sha256"],
             "ReferenceUsedForReconstruction": False,
@@ -124,9 +124,9 @@ def build_ifc(I, output):
             "Scope": I["scope"],
             "Units": "Metres; explicit input scale; global coordinates preserved; CRS unspecified",
             "RoomTopologyValidated": False,
-            "Method": "PCA normals, axis plane proposals, monotone Sugeno support, paired faces, masked distance watershed",
+            "Method": "Geometry-only G seed, local opposing-face hypotheses, shared candidate pool, mean/minimum utility, provisional room re-clipping" if "local_refinement" in I else "PCA normals, axis plane proposals, monotone Sugeno support, paired faces, masked distance watershed",
             "FuzzyScoreMeaning": "Support index; not a calibrated probability",
-            "ExperimentalStatus": "Expert uncalibrated method 0.6; no population-level performance claim",
+            "ExperimentalStatus": "Expert uncalibrated method 0.7 local; no population-level performance claim" if "local_refinement" in I else "Expert uncalibrated method 0.6; no population-level performance claim",
             "OpeningsStatus": "Not reconstructed; bridged wall gaps may cover real openings",
         },
     )
@@ -171,7 +171,7 @@ def build_ifc(I, output):
             {
                 "ReviewRequired": True,
                 "SourceSHA256": I["source_sha256"],
-                "MethodVersion": "0.6",
+                "MethodVersion": "0.7 experimental local" if "local_refinement" in I else "0.6",
                 **pr,
             },
         )
@@ -198,6 +198,15 @@ def build_ifc(I, output):
                 "ExtentEvidence": w["extent_status"],
                 "EndpointExtensions_m": json.dumps(w["endpoint_extension_m"]),
                 "Openings": "No subtraction; requires survey review",
+                **({
+                    "PhysicalThicknessStatus": w.get("physical_thickness_status", "UNKNOWN_UNVERIFIED"),
+                    "ObservedOpposingPairHypothesis": w.get("observed_opposing_pair", False),
+                    "GeometricProfileWidth_m": w["thickness"],
+                    "WidthMeaning": "Transverse profile extent; not verified physical thickness",
+                    "LocalRefinementCandidate": w.get("local_refinement_candidate", "IDENTITY"),
+                    **({"ObservedFaceSeparation_m": w["observed_face_separation_m"]}
+                       if w.get("observed_opposing_pair") else {}),
+                } if "local_refinement" in I else {}),
             },
         )
         e.PredefinedType = "NOTDEFINED"

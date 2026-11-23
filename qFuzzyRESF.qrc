@@ -11,6 +11,7 @@
   <file>backend/fuzzyresf/topology.py</file>
   <file>backend/fuzzyresf/unified.py</file>
   <file>backend/fuzzyresf/hypotheses.py</file>
+  <file>backend/fuzzyresf/local_pairs.py</file>
   <file>backend/run_pipeline.py</file>
   <file>info.json</file>
   <file>resources/icon.svg</file>

@@ -2,11 +2,15 @@
 
 **Version 0.4.0 · experimental method 0.6.** A native C++/Qt plugin for CloudCompare 2.14 / Qt 6, with a local Python engine and an English interface.
 
+The research branch adds **method 0.7 local opposing-face profiles**. These are
+source code for integration and testing; this branch does not supply a newly
+compiled Windows plugin. See [the local refinement contract](docs/LOCAL_REFINEMENT.md).
+
 ## Changes
 
 - Polygon-only normalization after every fixed-precision wall overlay addresses mixed polygon/line GEOS failures found on three supplied scenes.
 - Wall roof cuts use partitioned parametric sweeps, full-plane clipping and Boolean union. A declared 2 mm overlap within the original wall footprint avoids coincident Boolean seams; it can change the top within this narrow seam. Mesh closure, positive volume and EXPRESS checks remain mandatory.
-- Four selectable profiles separate geometric reconstruction from candidate selection: **Geometry only**, **Monotone fuzzy baseline**, **Evidence support**, and **Relational hypotheses**.
+- Four legacy profiles separate geometric reconstruction from candidate selection: **Geometry only**, **Monotone fuzzy baseline**, **Evidence support**, and **Relational hypotheses**. Two experimental local opposing-face profiles add a matched mean/minimum comparison.
 - Experimental support intervals distinguish missing support from negative evidence. A bounded mixed-integer solver selects finite candidate sets using neighbouring-wall compatibility and duplicate conflicts. This is not global building-geometry optimization or a learned/calibrated classifier.
 - Reports separate exported geometry from exterior candidates discarded during fusion and explicitly identify partial surface models.
 
@@ -35,6 +39,8 @@ python backend/run_pipeline.py --input building.las --output building.ifc --prof
 | `monotone` | Previous weighted-membership gate, preserved for comparison |
 | `evidence` | Expert geometric-mean fit support, observed-support fraction and ignorance bounds |
 | `relational` | Same evidence plus joint finite-candidate selection using wall relations |
+| `experimental_local_continuous` | Geometry-only seed, locally observed opposing-face candidates, mean support utility |
+| `experimental_local_fuzzy` | Identical candidates and guards, minimum support utility |
 
 Evidence/relational values are **EXPERT_UNCALIBRATED**, not probabilities or statistical confidence intervals. Low observation coverage is recorded as unknown. No scanner-origin/free-space evidence is fabricated. Solver time/resource limits and deterministic fallback are logged; multiple optimal solutions can differ across solver versions.
 

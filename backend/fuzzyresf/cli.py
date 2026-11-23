@@ -72,11 +72,13 @@ def validate_request(request):
     ):
         raise ValueError("Invalid conversion factor to metres.")
     profile = request.get("profile", "monotone")
-    if profile not in {"monotone", "legacy", "geometry_only", "evidence", "relational"}:
+    if profile not in {"monotone", "legacy", "geometry_only", "evidence", "relational", "experimental_local_continuous", "experimental_local_fuzzy"}:
         raise ValueError("Unknown profile.")
     mode = request.get("mode", "unified")
     if mode not in {"unified", "interior", "exterior"}:
         raise ValueError("Unknown mode: use unified (default), interior or exterior.")
+    if profile.startswith("experimental_local_") and mode != "unified":
+        raise ValueError("Experimental local refinement requires unified mode.")
     if mode != "interior" and profile == "legacy":
         raise ValueError("The legacy profile is only supported by the interior research pipeline.")
     limits = request.get("limits", {})
@@ -138,7 +140,20 @@ def run(request):
         if mode == "unified":
             from .unified import infer_unified
             from .exterior_ifc import build_exterior_ifc
-            inference = infer_unified(P, N, PL, audit, profile, limits["max_raster_cells"], progress)
+            seed_profile = "geometry_only" if profile.startswith("experimental_local_") else profile
+            inference = infer_unified(P, N, PL, audit, seed_profile, limits["max_raster_cells"], progress)
+            if profile.startswith("experimental_local_"):
+                from .local_pairs import refine
+                progress(70, "Checking locally observed opposing wall faces")
+                inference = refine(inference, P, N, PL,
+                                   "minimum" if profile.endswith("fuzzy") else "mean")
+                inference["profile"] = profile
+                inference["method_version"] = "0.7 experimental local"
+                warning = ("Experimental G-seeded local refinement uses 5 cm voxel evidence. "
+                           "Physical thickness remains unverified; rooms are re-clipped, not re-segmented. "
+                           "Internal strip validation is not an independent test.")
+                warnings.append(warning)
+                emit("warning", message=warning)
             builder = build_ifc if "main_level" in inference else build_exterior_ifc
             for decision in inference["decisions"]:
                 if decision["status"] in {"NOT_SUPPORTED", "NOT_RECONSTRUCTED"}:
@@ -176,10 +191,10 @@ def run(request):
         summary = {
             "tool_version": "0.4.0",
             "mode": mode,
-            "method_version": "0.6",
+            "method_version": inference.get("method_version", "0.6"),
             "schema_version": 1,
             "profile": profile,
-            "profile_calibration": "EXPERT_UNCALIBRATED" if profile in {"evidence", "relational"} else "EXPERT_BASELINE",
+            "profile_calibration": "EXPERT_UNCALIBRATED" if profile in {"evidence", "relational"} or profile.startswith("experimental_local_") else "EXPERT_BASELINE",
             "model_scope": "SUPPORTED_MAIN_LEVEL_WITH_ADDITIONAL_SURFACES" if "main_level" in inference else "PARTIAL_OBSERVED_SURFACES",
             "rooms_supported": "main_level" in inference,
             "global_envelope_certified": False,
@@ -229,7 +244,7 @@ def main(argv=None):
     parser.add_argument("--output", type=Path)
     parser.add_argument("--meters-per-unit", type=float, default=1.0)
     parser.add_argument(
-        "--profile", choices=["monotone", "legacy", "geometry_only", "evidence", "relational"], default="monotone"
+        "--profile", choices=["monotone", "legacy", "geometry_only", "evidence", "relational", "experimental_local_continuous", "experimental_local_fuzzy"], default="monotone"
     )
     parser.add_argument("--mode", choices=["unified", "interior", "exterior"], default="unified")
     parser.add_argument("--max-voxels", type=int, default=3_000_000)
