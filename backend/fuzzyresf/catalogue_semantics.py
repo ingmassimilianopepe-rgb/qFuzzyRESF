@@ -247,9 +247,13 @@ def infer_catalogue(I, P, N, PL, catalogue, aggregation="minimum"):
     if not all(np.isfinite(v).all() for v in (P, normal, planarity)):
         raise ValueError("Source evidence must be finite")
     Q, normal = P.copy(), normal.copy()
-    R = np.asarray(I["rotation_world_to_uv"], float)
-    Q[:, :2] = (Q[:, :2]-I["origin_xy"]) @ R.T
+    R = np.asarray(I.get("rotation_world_to_uv", np.eye(2)), float)
+    Q[:, :2] = (Q[:, :2]-I.get("origin_xy", [0., 0.])) @ R.T
     normal[:, :2] = normal[:, :2] @ R.T
+    for surface in result.get("surfaces", []):
+        surface.update(family_hypothesis="UNKNOWN", catalogue_family_id="UNKNOWN",
+                       catalogue_id=catalogue["catalogue_id"],
+                       physical_thickness_status="UNKNOWN_UNVERIFIED", physical_measurement=False)
     walls = result.get("walls", [])
     original = [shape(w["polygon"]) for w in walls]
     selected, candidates, decisions = list(original), [], []

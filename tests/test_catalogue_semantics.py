@@ -143,7 +143,8 @@ def test_ifc_solid_and_geometric_width_agree(tmp_path):
     validation = build_ifc(out, path)
     assert not validation["geometry_failures"]
     assert all(m["watertight"] and m["volume_m3"] > 0 for m in validation["meshes"])
-    wall = ifcopenshell.open(str(path)).by_type("IfcWall")[0]
+    model = ifcopenshell.open(str(path))
+    wall = model.by_type("IfcWall")[0]
     psets = get_psets(wall)
     width = out["walls"][0]["thickness"]
     assert psets["ScanToBIM_Evidence"]["GeometricProfileWidth_m"] == pytest.approx(width)
@@ -176,3 +177,13 @@ def test_unknown_added_without_mutating_catalogue():
     assert [f["id"] for f in c["families"]] == ["W241"]
     assert valid["families"][-1]["id"] == "UNKNOWN"
     assert valid["families"][-1]["nominal_m"] is None
+
+
+def test_partial_surface_only_abstains_without_a_wall_frame():
+    I = {"walls": [], "surfaces": [{"id": "S001", "kind": "wall"}]}
+    out = engine.infer_catalogue(I, np.empty((0, 3)), np.empty((0, 3)), np.empty(0), catalogue())
+    assert out["catalogue_inference"]["status"] == "ABSTAIN_NO_SUPPORTED_MAIN_LEVEL"
+    assert out["catalogue_inference"]["changed_walls"] == 0
+    assert out["surfaces"][0]["family_hypothesis"] == "UNKNOWN"
+    assert out["surfaces"][0]["physical_thickness_status"] == "UNKNOWN_UNVERIFIED"
+    assert "catalogue_family_id" not in I["surfaces"][0]
