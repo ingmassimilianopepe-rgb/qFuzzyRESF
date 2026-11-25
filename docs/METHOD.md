@@ -1,6 +1,6 @@
 # Method 0.6: supported geometry and finite evidence hypotheses
 
-This is an expert-parameter pilot. The implementation uses only the selected cloud, explicit input scale and configured resource budgets. Reference IFCs are comparison material, never inference inputs. No learning, calibrated probabilities or benchmark superiority is claimed.
+This is an expert-parameter pilot. The baseline implementation uses the selected cloud, explicit input scale and configured resource budgets. Method 0.8 additionally accepts a typed general-reference catalogue for provisional dimensional family hypotheses. Reference IFCs are comparison material, never inference inputs. No learning, calibrated probabilities or benchmark superiority is claimed.
 
 ## Shared preprocessing
 
@@ -75,3 +75,8 @@ Every wall overlay is normalized to polygon-only valid geometry at 1 mm precisio
 Roof-clipped wall regions are each constructed as complete parameterized extruded profiles with full-plane clipping. Their solids are joined by Boolean union. Clipped plan regions overlap by at most a declared 2 mm buffer, intersected back to the original wall footprint, to avoid coincident OCC seams. This can change top geometry within the seam and is recorded in IFC properties and validation. No wall is discarded merely because validation fails, and no closure/schema test is disabled. The model still requires independent review.
 
 See [EXPERIMENT_PROTOCOL.md](EXPERIMENT_PROTOCOL.md) for the paired development evaluation. No training on reference IFCs or accuracy gain is implied by these equations.
+
+
+## Method 0.8 catalogue comparison
+
+The three `experimental_catalogue_*` profiles start with geometry-only reconstruction and share geometry/family candidates. Crisp, mean and minimum aggregation provide matched controls; a catalogue Gaussian similarity remains a diagnostic rather than a reward that can establish material truth. UNKNOWN permits observed free geometry. Counterface candidates require local source support and guarded geometry changes; hidden layers and physical thickness are never verified by catalogue agreement. Compare full and empty-family catalogues with the same crisp engine to isolate catalogue contribution. The standalone membership learner is independent of inference and has no real annotated training dataset in this repository. See [the full contract](CATALOGUE_SEMANTICS.md).

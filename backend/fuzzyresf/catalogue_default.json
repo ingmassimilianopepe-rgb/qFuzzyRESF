@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "catalogue_id": "MetricHandbook1999_examples",
+  "units": "m",
+  "applicability": "GENERAL_REFERENCE",
+  "physical_measurement": false,
+  "source": {
+    "book": "Adler 1999 Metric Handbook, 2nd edition",
+    "isbn": "0750608994",
+    "pdf_page": 625,
+    "printed_page": "40-7",
+    "table": "III",
+    "derived_examples": [
+      "1A",
+      "2A"
+    ],
+    "interpretation": "General reference examples only; not as-built, regulation, or measured materials. Door coordination sizes must not be interpreted as wall thickness."
+  },
+  "families": [
+    {
+      "ifc_class": "IfcWall",
+      "nominal_m": null,
+      "applicability": "GENERAL_REFERENCE",
+      "physical_measurement": false,
+      "id": "UNKNOWN",
+      "kind": "free_geometry",
+      "dimension_role": "finished_wall_thickness",
+      "source": {
+        "book": "Adler 1999 Metric Handbook, 2nd edition",
+        "isbn": "0750608994",
+        "pdf_page": 625,
+        "printed_page": "40-7",
+        "table": "III",
+        "derived_examples": [
+          "1A",
+          "2A"
+        ],
+        "interpretation": "General reference examples only; not as-built, regulation, or measured materials. Door coordination sizes must not be interpreted as wall thickness."
+      },
+      "layers_m": []
+    },
+    {
+      "ifc_class": "IfcWall",
+      "nominal_m": 0.241,
+      "layers_m": [
+        0.013,
+        0.215,
+        0.013
+      ],
+      "applicability": "GENERAL_REFERENCE",
+      "physical_measurement": false,
+      "source": {
+        "book": "Adler 1999 Metric Handbook, 2nd edition",
+        "isbn": "0750608994",
+        "pdf_page": 625,
+        "printed_page": "40-7",
+        "table": "III",
+        "derived_examples": [
+          "1A",
+          "2A"
+        ],
+        "interpretation": "General reference examples only; not as-built, regulation, or measured materials. Door coordination sizes must not be interpreted as wall thickness."
+      },
+      "id": "W241",
+      "kind": "finished_wall_thickness",
+      "dimension_role": "finished_wall_thickness"
+    },
+    {
+      "ifc_class": "IfcWall",
+      "nominal_m": 0.28,
+      "layers_m": [
+        0.013,
+        0.102,
+        0.05,
+        0.102,
+        0.013
+      ],
+      "applicability": "GENERAL_REFERENCE",
+      "physical_measurement": false,
+      "source": {
+        "book": "Adler 1999 Metric Handbook, 2nd edition",
+        "isbn": "0750608994",
+        "pdf_page": 625,
+        "printed_page": "40-7",
+        "table": "III",
+        "derived_examples": [
+          "1A",
+          "2A"
+        ],
+        "interpretation": "General reference examples only; not as-built, regulation, or measured materials. Door coordination sizes must not be interpreted as wall thickness."
+      },
+      "id": "W280",
+      "kind": "finished_wall_thickness",
+      "dimension_role": "finished_wall_thickness"
+    }
+  ]
+}

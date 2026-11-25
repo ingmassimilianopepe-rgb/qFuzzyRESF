@@ -97,7 +97,23 @@ FuzzyDialog::FuzzyDialog(ccPointCloud* cloud, QWidget* parent)
     m_profile->addItem(tr("Geometry only (research comparison)"), "geometry_only");
     m_profile->addItem(tr("Local opposing faces: continuous (experimental)"), "experimental_local_continuous");
     m_profile->addItem(tr("Local opposing faces: fuzzy minimum (experimental)"), "experimental_local_fuzzy");
+    m_profile->addItem(tr("Catalogue families: crisp (experimental)"), "experimental_catalogue_crisp");
+    m_profile->addItem(tr("Catalogue families: continuous (experimental)"), "experimental_catalogue_continuous");
+    m_profile->addItem(tr("Catalogue families: fuzzy minimum (experimental)"), "experimental_catalogue_fuzzy");
     form->addRow(tr("Profile"), m_profile);
+    m_catalogue = new QLineEdit;
+    m_catalogue->setObjectName("cataloguePath");
+    m_catalogue->setPlaceholderText(tr("Bundled reference catalogue (optional JSON override)"));
+    auto* catalogueRow = new QHBoxLayout;
+    catalogueRow->addWidget(m_catalogue);
+    auto* catalogueBrowse = new QPushButton(tr("Choose JSON…"));
+    catalogueRow->addWidget(catalogueBrowse);
+    connect(catalogueBrowse, &QPushButton::clicked, this, [this] {
+        if (m_busy) return;
+        const auto path = QFileDialog::getOpenFileName(this, tr("Reference catalogue JSON"), m_catalogue->text(), "JSON (*.json)");
+        if (!path.isEmpty()) m_catalogue->setText(path);
+    });
+    form->addRow(tr("Catalogue (catalogue profiles only)"), catalogueRow);
     m_limit = new QSpinBox;
     m_limit->setRange(1, 20);
     m_limit->setValue(3);
@@ -149,7 +165,7 @@ void FuzzyDialog::setBusy(bool busy)
 {
     m_busy = busy;
     m_start->setEnabled(!busy);
-    for (QWidget* widget : QList<QWidget*>{m_python, m_output, m_units, m_profile, m_limit})
+    for (QWidget* widget : QList<QWidget*>{m_python, m_output, m_catalogue, m_units, m_profile, m_limit})
         widget->setEnabled(!busy);
     m_cancel->setText(busy ? tr("Cancel") : tr("Close"));
 }
@@ -168,6 +184,8 @@ void FuzzyDialog::reject()
 
 bool FuzzyDialog::prepareJob(QString& requestPath)
 {
+    if (!m_catalogue->text().trimmed().isEmpty() && !m_profile->currentData().toString().startsWith("experimental_catalogue_"))
+        throw std::runtime_error("Choose a catalogue profile to use a catalogue JSON file.");
     const auto destination = QFileInfo(m_output->text()).absoluteFilePath();
     const QFileInfo output(destination);
     if (output.suffix().compare("ifc", Qt::CaseInsensitive) != 0 || !output.dir().exists())
@@ -176,7 +194,7 @@ bool FuzzyDialog::prepareJob(QString& requestPath)
         throw std::runtime_error("Output already exists: choose a new filename.");
     m_work = std::make_unique<QTemporaryDir>(output.absolutePath() + "/.qfuzzyresf-job-XXXXXX");
     if (!m_work->isValid()) throw std::runtime_error("Could not create the temporary folder.");
-    const QStringList files = {"run_pipeline.py", "fuzzyresf/__init__.py", "fuzzyresf/cli.py", "fuzzyresf/cloud.py", "fuzzyresf/inference.py", "fuzzyresf/ifc.py", "fuzzyresf/levels.py", "fuzzyresf/exterior.py", "fuzzyresf/exterior_ifc.py", "fuzzyresf/topology.py", "fuzzyresf/unified.py", "fuzzyresf/hypotheses.py", "fuzzyresf/local_pairs.py"};
+    const QStringList files = {"run_pipeline.py", "fuzzyresf/__init__.py", "fuzzyresf/cli.py", "fuzzyresf/cloud.py", "fuzzyresf/inference.py", "fuzzyresf/ifc.py", "fuzzyresf/levels.py", "fuzzyresf/exterior.py", "fuzzyresf/exterior_ifc.py", "fuzzyresf/topology.py", "fuzzyresf/unified.py", "fuzzyresf/hypotheses.py", "fuzzyresf/local_pairs.py", "fuzzyresf/catalogue_semantics.py", "fuzzyresf/membership_training.py", "fuzzyresf/catalogue_default.json"};
     QDir().mkpath(m_work->filePath("fuzzyresf"));
     for (const auto& file : files) {
         QFile resource(":/CC/plugin/qFuzzyRESF/backend/" + file);
@@ -216,6 +234,8 @@ bool FuzzyDialog::prepareJob(QString& requestPath)
         {"limits", QJsonObject{{"max_voxels", m_limit->value() * 1000000}}},
         {"cloudcompare", QJsonObject{{"global_shift", QJsonArray{shift.x, shift.y, shift.z}}, {"global_scale", m_cloud->getGlobalScale()}, {"export_coordinates", "GLOBAL"}}}
     };
+    if (!m_catalogue->text().trimmed().isEmpty())
+        job.insert("catalogue", QFileInfo(m_catalogue->text().trimmed()).absoluteFilePath());
     requestPath = m_work->filePath("request.json");
     QFile request(requestPath);
     const auto bytes = QJsonDocument(job).toJson();
