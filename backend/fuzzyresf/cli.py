@@ -17,6 +17,11 @@ import tempfile
 import time
 
 
+CATALOGUE_PROFILES = {"experimental_catalogue_crisp": "crisp",
+                      "experimental_catalogue_continuous": "mean",
+                      "experimental_catalogue_fuzzy": "minimum"}
+
+
 def emit(event, **values):
     print(
         json.dumps({"event": event, **values}, ensure_ascii=False, allow_nan=False),
@@ -72,13 +77,15 @@ def validate_request(request):
     ):
         raise ValueError("Invalid conversion factor to metres.")
     profile = request.get("profile", "monotone")
-    if profile not in {"monotone", "legacy", "geometry_only", "evidence", "relational", "experimental_local_continuous", "experimental_local_fuzzy"}:
+    if profile not in {"monotone", "legacy", "geometry_only", "evidence", "relational", "experimental_local_continuous", "experimental_local_fuzzy", *CATALOGUE_PROFILES}:
         raise ValueError("Unknown profile.")
     mode = request.get("mode", "unified")
     if mode not in {"unified", "interior", "exterior"}:
         raise ValueError("Unknown mode: use unified (default), interior or exterior.")
-    if profile.startswith("experimental_local_") and mode != "unified":
-        raise ValueError("Experimental local refinement requires unified mode.")
+    if (profile.startswith("experimental_local_") or profile in CATALOGUE_PROFILES) and mode != "unified":
+        raise ValueError("Experimental local/catalogue inference requires unified mode.")
+    if "catalogue" in request and profile not in CATALOGUE_PROFILES:
+        raise ValueError("catalogue is supported only by experimental_catalogue profiles.")
     if mode != "interior" and profile == "legacy":
         raise ValueError("The legacy profile is only supported by the interior research pipeline.")
     limits = request.get("limits", {})
@@ -106,6 +113,17 @@ def write_json(path, value):
 
 def run(request):
     path, output, diagnostics, scale, profile, limits, fmt = validate_request(request)
+    catalogue = None
+    catalogue_source = None
+    catalogue_bytes = None
+    if profile in CATALOGUE_PROFILES:
+        from .catalogue_semantics import validate_catalogue
+        catalogue_path = Path(request.get("catalogue") or Path(__file__).with_name("catalogue_default.json")).expanduser().resolve()
+        # Freeze exactly the bytes that were validated, before any cloud processing.
+        catalogue_bytes = catalogue_path.read_bytes()
+        catalogue = validate_catalogue(json.loads(catalogue_bytes.decode("utf-8")))
+        catalogue_source = {"path": str(catalogue_path), "sha256": hashlib.sha256(catalogue_bytes).hexdigest(),
+                            "catalogue_id": catalogue["catalogue_id"]}
     versions = dependencies()
     from .cloud import analyse
     from .inference import infer
@@ -140,7 +158,7 @@ def run(request):
         if mode == "unified":
             from .unified import infer_unified
             from .exterior_ifc import build_exterior_ifc
-            seed_profile = "geometry_only" if profile.startswith("experimental_local_") else profile
+            seed_profile = "geometry_only" if profile.startswith("experimental_local_") or profile in CATALOGUE_PROFILES else profile
             inference = infer_unified(P, N, PL, audit, seed_profile, limits["max_raster_cells"], progress)
             if profile.startswith("experimental_local_"):
                 from .local_pairs import refine
@@ -152,6 +170,19 @@ def run(request):
                 warning = ("Experimental G-seeded local refinement uses 5 cm voxel evidence. "
                            "Physical thickness remains unverified; rooms are re-clipped, not re-segmented. "
                            "Internal strip validation is not an independent test.")
+                warnings.append(warning)
+                emit("warning", message=warning)
+            if profile in CATALOGUE_PROFILES:
+                from .catalogue_semantics import infer_catalogue
+                progress(70, "Selecting observed geometry and catalogue family hypotheses")
+                inference = infer_catalogue(inference, P, N, PL, catalogue, CATALOGUE_PROFILES[profile])
+                inference["profile"] = profile
+                inference["method_version"] = "0.8 experimental catalogue"
+                inference["catalogue_source"] = catalogue_source
+                audit["catalogue_source"] = catalogue_source
+                inference["catalogue_scope"] = "GENERAL_REFERENCE_PRIOR; family hypothesis only; physical thickness and materials UNKNOWN; partial surfaces UNKNOWN"
+                warning = ("Experimental catalogue family hypotheses use general reference examples, not as-built facts or regulations. "
+                           "Physical thickness and materials remain UNKNOWN; doors and windows are not reconstructed.")
                 warnings.append(warning)
                 emit("warning", message=warning)
             builder = build_ifc if "main_level" in inference else build_exterior_ifc
@@ -194,7 +225,7 @@ def run(request):
             "method_version": inference.get("method_version", "0.6"),
             "schema_version": 1,
             "profile": profile,
-            "profile_calibration": "EXPERT_UNCALIBRATED" if profile in {"evidence", "relational"} or profile.startswith("experimental_local_") else "EXPERT_BASELINE",
+            "profile_calibration": "EXPERT_UNCALIBRATED" if profile in {"evidence", "relational"} or profile.startswith("experimental_local_") or profile in CATALOGUE_PROFILES else "EXPERT_BASELINE",
             "model_scope": "SUPPORTED_MAIN_LEVEL_WITH_ADDITIONAL_SURFACES" if "main_level" in inference else "PARTIAL_OBSERVED_SURFACES",
             "rooms_supported": "main_level" in inference,
             "global_envelope_certified": False,
@@ -209,6 +240,11 @@ def run(request):
             "dependencies": versions,
             "runtime_s": time.perf_counter() - start,
         }
+        if catalogue_source is not None:
+            summary["catalogue_source"] = catalogue_source
+            summary["catalogue_scope"] = inference["catalogue_scope"]
+            (work / "catalogue_source.json").write_bytes(catalogue_bytes)
+            write_json(work / "catalogue_snapshot.json", catalogue)
         write_json(work / "summary.json", summary)
         # mkdir is the exclusive claim on a result name; clean up only our own files.
         diagnostics.mkdir()
@@ -221,6 +257,9 @@ def run(request):
                 "summary.json",
             ):
                 shutil.copy2(work / name, diagnostics / name)
+            if catalogue_source is not None:
+                for name in ("catalogue_source.json", "catalogue_snapshot.json"):
+                    shutil.copy2(work / name, diagnostics / name)
             os.link(candidate, output)  # fails if another writer created output
             linked = True
         except BaseException:
@@ -244,8 +283,9 @@ def main(argv=None):
     parser.add_argument("--output", type=Path)
     parser.add_argument("--meters-per-unit", type=float, default=1.0)
     parser.add_argument(
-        "--profile", choices=["monotone", "legacy", "geometry_only", "evidence", "relational", "experimental_local_continuous", "experimental_local_fuzzy"], default="monotone"
+        "--profile", choices=["monotone", "legacy", "geometry_only", "evidence", "relational", "experimental_local_continuous", "experimental_local_fuzzy", *CATALOGUE_PROFILES], default="monotone"
     )
+    parser.add_argument("--catalogue", type=Path, help="Optional typed JSON catalogue for experimental_catalogue profiles")
     parser.add_argument("--mode", choices=["unified", "interior", "exterior"], default="unified")
     parser.add_argument("--max-voxels", type=int, default=3_000_000)
     args = parser.parse_args(argv)
@@ -272,6 +312,8 @@ def main(argv=None):
                 "mode": args.mode,
                 "limits": {"max_voxels": args.max_voxels},
             }
+        if args.catalogue is not None:
+            request["catalogue"] = str(args.catalogue)
         return run(request)
     except KeyboardInterrupt:
         emit(

@@ -12,11 +12,13 @@ import io
 import json
 import os
 from pathlib import Path
+import platform
 from typing import Any
 
 import numpy as np
+import scipy
 from scipy.optimize import minimize
-from scipy.special import expit, log_expit
+from scipy.special import log_expit
 
 COLUMNS = (
     "building_id", "scene_id", "pair_id", "angle_deg", "residual_p95_m",
@@ -203,6 +205,8 @@ def run(annotations: Path, roles_path: Path, output: Path, dataset_kind: str) ->
         validation = parse_role(rows, roles["validation"], dataset_kind, require_both_classes=True)
         parameters, regularization, trials = fit(train, validation)
         model = {**manifest, "format_version": 1, "model_type": "monotone_sigmoid_geometric_mean",
+                 "software": {"python": platform.python_version(), "numpy": np.__version__, "scipy": scipy.__version__,
+                              "learner_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()},
                  "parameters": {"centers_normalized": parameters[:4].tolist(), "log_slopes": parameters[4:].tolist()},
                  "config": {"features": list(FEATURES), "feature_scales": SCALES.tolist(), "directions": DIRECTIONS.tolist(),
                             "regularization_candidates": list(LAMBDAS), "selected_regularization": regularization,
@@ -229,6 +233,7 @@ def run(annotations: Path, roles_path: Path, output: Path, dataset_kind: str) ->
         return report
     except Exception as exc:
         _json_write(output / "audit.json", {"status": "error", "model_frozen_before_test_parse": frozen,
+                                           "fitted_model_sha256": model_sha if frozen else None,
                                            "error_type": type(exc).__name__, "error": str(exc)})
         raise
 

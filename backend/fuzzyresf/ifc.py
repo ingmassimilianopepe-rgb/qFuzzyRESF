@@ -16,6 +16,28 @@ from shapely.ops import unary_union
 import trimesh
 
 
+def catalogue_project_properties(I):
+    source = I.get("catalogue_source")
+    if source is None:
+        return {}
+    return {"CatalogueSourcePath": source["path"], "CatalogueSourceSHA256": source["sha256"],
+            "CatalogueId": source["catalogue_id"], "CatalogueApplicability": "GENERAL_REFERENCE",
+            "CatalogueScope": I.get("catalogue_scope", "Family hypothesis only; physical thickness and materials UNKNOWN"),
+            "PhysicalMeasurement": False, "PhysicalThicknessStatus": "UNKNOWN_UNVERIFIED"}
+
+
+def catalogue_element_properties(I, item, width):
+    if "catalogue_source" not in I:
+        return {}
+    return {**catalogue_project_properties(I), "FamilyHypothesis": item.get("family_hypothesis", "UNKNOWN"),
+            "CatalogueFamilyId": item.get("catalogue_family_id", "UNKNOWN"),
+            "CatalogueCandidateId": item.get("catalogue_candidate_id", "UNKNOWN"),
+            "GeometricProfileWidth_m": float(width),
+            "WidthMeaning": "Actual exported transverse profile extent; unverified physical thickness",
+            "PhysicalThicknessStatus": "UNKNOWN_UNVERIFIED", "MaterialCompositionStatus": "UNKNOWN",
+            "PhysicalMeasurement": False}
+
+
 def build_ifc(I, output):
     out = Path(output)
     f = ifcopenshell.file(schema="IFC4")
@@ -116,7 +138,8 @@ def build_ifc(I, output):
     props(
         project,
         {
-            "MethodVersion": "0.7 experimental local" if "local_refinement" in I else "0.6 experimental",
+            "MethodVersion": I.get("method_version", "0.7 experimental local" if "local_refinement" in I else "0.6 experimental"),
+            **catalogue_project_properties(I),
             "Profile": I.get("profile", "monotone"),
             "SourceSHA256": I["source_sha256"],
             "ReferenceUsedForReconstruction": False,
@@ -124,9 +147,9 @@ def build_ifc(I, output):
             "Scope": I["scope"],
             "Units": "Metres; explicit input scale; global coordinates preserved; CRS unspecified",
             "RoomTopologyValidated": False,
-            "Method": "Geometry-only G seed, local opposing-face hypotheses, shared candidate pool, mean/minimum utility, provisional room re-clipping" if "local_refinement" in I else "PCA normals, axis plane proposals, monotone Sugeno support, paired faces, masked distance watershed",
+            "Method": "Geometry-only G seed; shared geometry/family candidates; crisp/mean/minimum selection; general reference prior" if "catalogue_source" in I else ("Geometry-only G seed, local opposing-face hypotheses, shared candidate pool, mean/minimum utility, provisional room re-clipping" if "local_refinement" in I else "PCA normals, axis plane proposals, monotone Sugeno support, paired faces, masked distance watershed"),
             "FuzzyScoreMeaning": "Support index; not a calibrated probability",
-            "ExperimentalStatus": "Expert uncalibrated method 0.7 local; no population-level performance claim" if "local_refinement" in I else "Expert uncalibrated method 0.6; no population-level performance claim",
+            "ExperimentalStatus": "Expert uncalibrated method 0.8 catalogue; family hypothesis only" if "catalogue_source" in I else ("Expert uncalibrated method 0.7 local; no population-level performance claim" if "local_refinement" in I else "Expert uncalibrated method 0.6; no population-level performance claim"),
             "OpeningsStatus": "Not reconstructed; bridged wall gaps may cover real openings",
         },
     )
@@ -171,7 +194,7 @@ def build_ifc(I, output):
             {
                 "ReviewRequired": True,
                 "SourceSHA256": I["source_sha256"],
-                "MethodVersion": "0.7 experimental local" if "local_refinement" in I else "0.6",
+                "MethodVersion": I.get("method_version", "0.7 experimental local" if "local_refinement" in I else "0.6"),
                 **pr,
             },
         )
@@ -189,6 +212,7 @@ def build_ifc(I, output):
             zf,
             H,
             {
+                **catalogue_element_properties(I, w, w["thickness"]),
                 "SupportScore": w["score"],
                 "Thickness_m": w["thickness"],
                 "ThicknessEvidence": w["thickness_status"],

@@ -22,7 +22,7 @@ public:
     void reject() override;
 private:
     ccPointCloud* m_cloud;
-    QLineEdit *m_python, *m_output;
+    QLineEdit *m_python, *m_output, *m_catalogue;
     QComboBox *m_units, *m_profile;
     QSpinBox* m_limit;
     QProgressBar* m_progress;

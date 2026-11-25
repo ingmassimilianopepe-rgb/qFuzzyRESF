@@ -13,7 +13,7 @@ The CSV must contain exactly these columns, in this order:
 | `building_id` | Stable identifier for one physical building |
 | `scene_id` | Scene identifier within that building |
 | `pair_id` | Pair identifier within that scene |
-| `angle_deg` | Plane normal disagreement, in degrees |
+| `angle_deg` | Unoriented plane normal disagreement, from 0 to 90 degrees |
 | `residual_p95_m` | Nonnegative 95th-percentile geometric residual, in metres |
 | `shared_length_fraction` | Shared support length fraction, from 0 to 1 |
 | `shared_z_m` | Nonnegative shared vertical support, in metres |
@@ -59,5 +59,7 @@ The model has eight learned parameters: a location and positive slope for each o
 Fitting uses deterministic SciPy L-BFGS-B optimization of mean squared grade error, averaged equally across training buildings, plus L2 regularization. The regularization coefficient is selected from `0.1`, `0.01`, and `0.001` by validation building-macro mean squared error. Classification uses the fixed threshold `q >= 0.5`; the threshold is not selected on held-out data.
 
 The tool hashes and seals the raw CSV bytes before fitting. It may read identifiers to check the split inventory, but it does not parse held-out test feature values or labels until the fitted model and its SHA-256 freeze have been written. The saved fit records source hashes, configuration, building roles, dataset kind, and whether the run is synthetic software-only. After freezing, held-out reporting includes per-building precision, recall, balanced accuracy, and grade mean squared error, together with equal-building macro averages. These are descriptive held-out metrics; no confidence interval or point-independence claim is made.
+
+Undefined precision or recall (zero denominator), and balanced accuracy for a building lacking either class, are recorded as `null`. Macro averages include only buildings with a defined value for the respective metric and report that count. Grade MSE is defined for every building. Numeric cells cannot reveal whether the operator actually used the declared units; verify degrees and metres at annotation export.
 
 If held-out data fail validation after the freeze, the fitted model remains available and an error audit records the failed evaluation. Do not revise a model using held-out results and continue to describe that role as untouched test data. Gather another independent physical-building holdout for a subsequent evaluation.

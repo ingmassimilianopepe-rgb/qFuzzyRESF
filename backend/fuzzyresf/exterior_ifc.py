@@ -15,6 +15,7 @@ BOOLEAN_SEAM_OVERLAP_M = .002
 
 def add_surfaces(f, project, building, body, I):
     api=ifcopenshell.api.run
+    from .ifc import catalogue_element_properties
     ns=uuid.UUID('68629214-370a-4429-a25d-66837031ea06')
     def point(p):return f.create_entity('IfcCartesianPoint',Coordinates=tuple(map(float,p)))
     def direction(v):return f.create_entity('IfcDirection',DirectionRatios=tuple(map(float,v)))
@@ -94,7 +95,8 @@ def add_surfaces(f, project, building, body, I):
         api('style.assign_representation_styles',f,shape_representation=rep,styles=[style])
         pset=api('pset.add_pset',f,product=e,name='ScanToBIM_Evidence')
         api('pset.edit_pset',f,pset=pset,properties={
-            'MethodVersion':'0.6','ReviewRequired':True,'SourceSHA256':I['source_sha256'],
+            'MethodVersion':I.get('method_version','0.6'),'ReviewRequired':True,'SourceSHA256':I['source_sha256'],
+            **catalogue_element_properties(I, s, s['thickness_m']),
             'SolidConstruction':'Partitioned parametric sweeps with plane clipping and Boolean union',
             'BooleanSeamOverlap_m':BOOLEAN_SEAM_OVERLAP_M if cls=='IfcWall' else 0.,
             'SupportScore':s['score'],'ResidualP95_m':s['P95_m'],'SupportPoints':s['support_points'],
@@ -136,8 +138,9 @@ def build_exterior_ifc(I,output):
     for parent,child in [(project,site),(site,building)]:
         api('aggregate.assign_object',f,products=[child],relating_object=parent)
         api('geometry.edit_object_placement',f,product=child,matrix=np.eye(4))
+    from .ifc import catalogue_project_properties
     pset=api('pset.add_pset',f,product=project,name='ScanToBIM_Evidence')
-    api('pset.edit_pset',f,pset=pset,properties={'MethodVersion':'0.6 experimental','ToolVersion':'0.4.0','Mode':I.get('mode','unified'),
+    api('pset.edit_pset',f,pset=pset,properties={**catalogue_project_properties(I),'MethodVersion':I.get('method_version','0.6 experimental'),'ToolVersion':'0.4.0','Mode':I.get('mode','unified'),
         'SourceSHA256':I['source_sha256'],'ReferenceUsedForReconstruction':False,'ReviewRequired':True,
         'Scope':I['scope'],'RoomsStatus':'Insufficient interior evidence','BuildingEnvelopeClosed':False,
         'FuzzyScoreMeaning':'Expert support index; not calibrated probability',

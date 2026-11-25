@@ -2,9 +2,11 @@
 
 **Version 0.4.0 · experimental method 0.6.** A native C++/Qt plugin for CloudCompare 2.14 / Qt 6, with a local Python engine and an English interface.
 
-The research branch adds **method 0.7 local opposing-face profiles**. These are
-source code for integration and testing; this branch does not supply a newly
-compiled Windows plugin. See [the local refinement contract](docs/LOCAL_REFINEMENT.md).
+The research branch adds **method 0.8 catalogue semantic hypotheses**, alongside the
+method 0.7 local opposing-face profiles. These are source code for integration and
+testing; this branch does not supply a newly compiled Windows plugin. See the
+[catalogue contract](docs/CATALOGUE_SEMANTICS.md) and
+[local refinement contract](docs/LOCAL_REFINEMENT.md).
 
 ## Changes
 
@@ -13,6 +15,7 @@ compiled Windows plugin. See [the local refinement contract](docs/LOCAL_REFINEME
 - Four legacy profiles separate geometric reconstruction from candidate selection: **Geometry only**, **Monotone fuzzy baseline**, **Evidence support**, and **Relational hypotheses**. Two experimental local opposing-face profiles add a matched mean/minimum comparison.
 - Experimental support intervals distinguish missing support from negative evidence. A bounded mixed-integer solver selects finite candidate sets using neighbouring-wall compatibility and duplicate conflicts. This is not global building-geometry optimization or a learned/calibrated classifier.
 - Reports separate exported geometry from exterior candidates discarded during fusion and explicitly identify partial surface models.
+- Three method 0.8 catalogue profiles share a geometry-only seed and candidate pool. They attach provisional wall-family hypotheses from a typed reference catalogue; physical construction and materials remain unknown.
 
 One **Generate IFC** workflow evaluates supported rooms and additional observed surfaces. The main interior level still assumes predominantly orthogonal walls and a supported horizontal floor/ceiling pair. Multiple-storey spaces, curved rooms, doors/windows, stairs and complete global envelope closure remain unresolved. No superiority over published methods is claimed. See [method](docs/METHOD.md), [research scope](docs/RESEARCH_DIRECTION.md), and [paired protocol](docs/EXPERIMENT_PROTOCOL.md).
 
@@ -41,8 +44,29 @@ python backend/run_pipeline.py --input building.las --output building.ifc --prof
 | `relational` | Same evidence plus joint finite-candidate selection using wall relations |
 | `experimental_local_continuous` | Geometry-only seed, locally observed opposing-face candidates, mean support utility |
 | `experimental_local_fuzzy` | Identical candidates and guards, minimum support utility |
+| `experimental_catalogue_crisp` | Geometry-only seed, shared catalogue candidate pool, crisp support control |
+| `experimental_catalogue_continuous` | Same candidate pool and guards, mean support aggregation |
+| `experimental_catalogue_fuzzy` | Same candidate pool and guards, minimum support aggregation |
 
 Evidence/relational values are **EXPERT_UNCALIBRATED**, not probabilities or statistical confidence intervals. Low observation coverage is recorded as unknown. No scanner-origin/free-space evidence is fabricated. Solver time/resource limits and deterministic fallback are logged; multiple optimal solutions can differ across solver versions.
+
+The catalogue profiles require `unified` mode. An optional `--catalogue custom.json`
+selects a typed catalogue; omitting it uses the bundled
+`backend/fuzzyresf/catalogue_default.json`. The English dialog also accepts an
+optional catalogue path. A catalogue supplied to another profile is rejected.
+The selected JSON is read and validated once before point-cloud processing, and
+its source path, SHA-256 and frozen snapshot accompany the diagnostics.
+
+```bash
+python backend/run_pipeline.py --input building.las --output catalogue.ifc \
+  --profile experimental_catalogue_fuzzy --catalogue custom.json
+```
+
+The bundled `MetricHandbook1999_examples` catalogue is a general reference prior,
+not an as-built specification, a regulation or a material measurement. Its
+finished-wall examples may support a family hypothesis; they cannot establish
+physical thickness, layers or materials. Door coordination dimensions are not
+wall thicknesses. Doors and windows are not reconstructed.
 
 LAS, LAZ and plugin XYZ64 are supported. `unified` is the default mode; `interior`/`exterior` remain CLI-only compatibility options. `legacy` is supported only for explicit interior jobs.
 
